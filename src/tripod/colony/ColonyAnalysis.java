@@ -117,7 +117,7 @@ public class ColonyAnalysis {
 
     protected void applyRescale () {
         long start = System.currentTimeMillis();
-        BufferedImage img = applyRescale (getRaster (), stats, range);
+        BufferedImage img = Util.rescale(getRaster (), stats, range);
         BufferedImage old = imageStack.put(Type.Rescaled, img);
         logger.info("## image rescale in "
                     +String.format("%1$.3fs", 
@@ -132,7 +132,7 @@ public class ColonyAnalysis {
                 ("No rescaled image available to apply threshold!");
         }
         long start = System.currentTimeMillis();
-        bitmap = applyThreshold (rescaled.getData(), threshold);        
+        bitmap = Util.threshold(rescaled.getData(), threshold);
         BufferedImage img = bitmap.createBufferedImage();
         BufferedImage old = imageStack.put(Type.Threshold, img);
         logger.info("## image thresholding ("+threshold+") in "
@@ -186,10 +186,8 @@ public class ColonyAnalysis {
     }
     
     /**
-     * This is a bottom up approach whereby connected components
-     * are merged recursively merged (i.e., transitive closure) 
-     * based on theirs nearest neighbor until no more merge operations
-     * possible.
+     * This is a top-down segmentation approach that uses histograms
+     * to identify the plates then connected components are colonies.
      */
     protected void extractColonies () {
         if (polygons == null || polygons.isEmpty()) {
@@ -220,54 +218,6 @@ public class ColonyAnalysis {
         firePropertyChange ("colonies", old, colonies);
     }
 
-    static protected BufferedImage applyRescale 
-        (Raster raster, RasterStats stats, int range) {
-        if (range <= 0) {
-            // probably doesn't make sense to the range bigger
-            range = Math.min(stats.getRange(), DEFAULT_MAX_RANGE);
-        }
-        int min = stats.getMaxValue() - range;
-
-        logger.info("## range="+range+"; min="
-                    +min+"["+stats.getCount(min)
-                    +"]; max="+stats.getMaxValue()
-                    +"["+stats.getCount(stats.getMaxValue())+"]");
-
-        RenderingHints hints = new RenderingHints
-            (RenderingHints.KEY_ANTIALIASING, 
-             RenderingHints.VALUE_ANTIALIAS_ON);
-        hints.put(RenderingHints.KEY_RENDERING, 
-                  RenderingHints.VALUE_RENDER_QUALITY);
-        hints.put(RenderingHints.KEY_INTERPOLATION, 
-                  RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-
-        // now rescaling the raster
-        BufferedImage rescaled = new BufferedImage 
-            (raster.getWidth(), raster.getHeight(), 
-             BufferedImage.TYPE_BYTE_GRAY);
-
-        // rescale to 8-bit
-        double scale = 256./(range+1);
-        RescaleOp op = new RescaleOp 
-            ((float)scale, (float)-scale*min, hints);
-        op.filter(raster, rescaled.getRaster());
-
-        return rescaled;
-    }
-
-
-    static protected Bitmap applyThreshold (Raster raster, int threshold) {
-        Bitmap bitmap = new Bitmap (raster.getWidth(), raster.getHeight()); 
-
-        // binary thresholding
-        for (int i = 0; i < raster.getWidth(); ++i) 
-            for (int j = 0; j < raster.getHeight(); ++j) {
-                int p = raster.getSample(i, j, 0);
-                bitmap.set(i, j, p < threshold);
-            }
-        return bitmap;
-    }
-
     public void applyThreshold (int threshold) {
         
     }
@@ -279,8 +229,9 @@ public class ColonyAnalysis {
         return imageStack.get(type);
     }
 
-    public List<Shape> getPolygons () { return polygons; }
+    public Collection<Shape> getPolygons () { return polygons; }
     public Collection<Colony> getColonies () { return colonies; }
+    public Collection<Path2D> getSegments () { return segments; }
 
     public void addPropertyChangeListener (PropertyChangeListener l) {
         pcs.addPropertyChangeListener(l);

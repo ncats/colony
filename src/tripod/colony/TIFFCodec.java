@@ -1,6 +1,8 @@
 package tripod.colony;
 
 import java.io.*;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -13,7 +15,12 @@ import com.sun.media.jai.codec.*;
 public class TIFFCodec implements TIFFTags {
     static final Logger logger = Logger.getLogger(TIFFCodec.class.getName());
 
-    public static Raster decode (File file) throws IOException {
+    public static RenderedImage decode (File file) throws IOException {
+        return decode (file, new HashMap ());
+    }
+
+    public static RenderedImage decode (File file, Map params) 
+        throws IOException {
         ImageDecoder decoder = ImageCodec.createImageDecoder
 	    ("TIFF", file, new TIFFDecodeParam ());
 
@@ -21,11 +28,6 @@ public class TIFFCodec implements TIFFTags {
 	TIFFDirectory tif = new TIFFDirectory (decoder.getInputStream(), 0);
 	TIFFField[] fields = tif.getFields();
 
-	double width = 0, height = 0;
-	String unit = "";
-	double xres = 0., yres = 0.;
-        double rows = -1;
-	int photometric = -1, bpp = -1;
 	for (int j = 0; j < fields.length; ++j) {
 	    TIFFField f = fields[j];
 	    int tag = f.getTag();
@@ -37,40 +39,48 @@ public class TIFFCodec implements TIFFTags {
                         if (u == RESOLUTIONUNIT_NONE) {
                         }
                         else if (u == RESOLUTIONUNIT_INCH) {
-                            unit = "in";
+                            params.put(TAG_RESOLUTIONUNIT, "in");
                         }
                         else if (u == RESOLUTIONUNIT_CENT) {
-                            unit = "cm";
+                            params.put(TAG_RESOLUTIONUNIT, "cm");
                         }
                     }
                     break;
                     
                 case TAG_XRESOLUTION:
-                    xres = f.getAsFloat(0);
+                    params.put(TAG_XRESOLUTION, f.getAsFloat(0));
                     break;
                     
                 case TAG_YRESOLUTION:
-                    yres = f.getAsFloat(0);
+                    params.put(TAG_YRESOLUTION, f.getAsFloat(0));
                     break;
                 
                 case TAG_ROWSPERSTRIP:
-                    rows = f.getAsFloat(0);
+                    params.put(TAG_ROWSPERSTRIP, f.getAsFloat(0));
                     break;
                     
                 case TAG_PHOTOMETRIC:
-                    photometric = f.getAsInt(0);
+                    params.put(TAG_PHOTOMETRIC, f.getAsInt(0));
                     break;
                     
                 case TAG_BITSPERSAMPLE:
-                    bpp = f.getAsInt(0);
+                    params.put(TAG_BITSPERSAMPLE, f.getAsInt(0));
                     break;
                     
                 case TAG_IMAGEWIDTH: 
-                    width = f.getAsFloat(0);
+                    params.put(TAG_IMAGEWIDTH, f.getAsFloat(0));
                     break;
                     
                 case TAG_IMAGELENGTH:	
-                    height = f.getAsFloat(0);
+                    params.put(TAG_IMAGELENGTH, f.getAsFloat(0));
+                    break;
+
+                case TAG_DATETIME:
+                    params.put(TAG_DATETIME, f.getAsString(0));
+                    break;
+
+                case TAG_DOCUMENTNAME:
+                    params.put(TAG_DOCUMENTNAME, f.getAsString(0));
                     break;
                 }
             }
@@ -89,16 +99,8 @@ public class TIFFCodec implements TIFFTags {
           }
 	*/
 
-	RenderedImage decodedImage = decoder.decodeAsRenderedImage();
-	Raster raster = decodedImage.getData();
-
-	logger.info(file + " has " + ndirs + " image; width="+width
-                    +" height="+height +" xres="+xres+unit
-                    +" yres="+yres+unit+" bpp="+bpp
-                    +" photometric="+photometric+" rows="+rows
-                    +" nbands="+raster.getNumBands());
-
-        return raster;
+	logger.info(file + " has " + ndirs + " image; "+params);
+        return decoder.decodeAsRenderedImage();
     }
 
     public static void encode (String file, RenderedImage image) 

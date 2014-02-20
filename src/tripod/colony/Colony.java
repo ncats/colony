@@ -2,6 +2,7 @@ package tripod.colony;
 
 import java.util.logging.Logger;
 import java.util.List;
+import java.util.Collection;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,7 +27,7 @@ public class Colony {
      */
     protected Shape bounds;
     protected Area area;
-    protected Path2D segment;
+    protected Collection<Path2D> segments = new ArrayList<Path2D>();
     protected List<Colony> children; // sub colonies (if any)
     private boolean isDirty = false;
 
@@ -80,6 +81,12 @@ public class Colony {
             addChild (child);
         }
     }
+
+    public void setSegments (Collection<Path2D> segments) {
+        Shape bounds = getBounds ();
+        segments.clear();
+    }
+    public Collection<Path2D> getSegments () { return segments; }
 
     public List<Colony> getTerminalColonies () {
         if (children == null) {

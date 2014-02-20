@@ -43,6 +43,9 @@
            source="1.5">
       <classpath refid="compile.classpath"/>
     </javac>
+    <copy todir="${build}">
+        <fileset dir="${src}" includes="**/resources/**"/>
+    </copy>
   </target>
 
   <target name="dist" depends="compile">
@@ -84,6 +87,20 @@
      <java classname="tripod.colony.ColonyImagePane" maxmemory="256m"
             classpathref="lib.classpath" fork="true">
          <arg value="data/Cy5_3.tif"/>
+     </java>
+  </target>
+  <target name="zpanel" depends="compile">
+     <echo message="=== Spheroid test "/>
+     <java classname="tripod.colony.ZPanel" maxmemory="256m"
+            classpathref="lib.classpath" fork="true">
+         <arg value="madhu/O-9/O - 9(fld 1 wv FITC - FITC z 9).tif"/>
+     </java>
+  </target>
+  <target name="zexplorer" depends="compile">
+     <echo message="=== ZExplorer"/>
+     <java classname="tripod.colony.ZExplorer" maxmemory="512m"
+            classpathref="lib.classpath" fork="true">
+         <arg value="madhu/O-9/O - 9(fld 1 wv FITC - FITC z 9).tif"/>
      </java>
   </target>
 </project>

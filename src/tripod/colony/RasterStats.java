@@ -62,4 +62,9 @@ public class RasterStats {
             v[i] = values[i];
         return v;
     }
+
+    public String toString () {
+        return "{min="+min+",max="+max+",mean="
+            +mean+",range="+getRange ()+"}";
+    }
 }

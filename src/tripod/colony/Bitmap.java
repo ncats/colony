@@ -1085,7 +1085,10 @@ public class Bitmap implements Serializable, TIFFTags {
         List<Shape> comps = new ArrayList<Shape> ();
         for (List<Point> pts : coords.values ()) {
             Polygon hull = GeomUtil.convexHull (pts.toArray (new Point[0]));
-            comps.add (hull);
+            Rectangle r = hull.getBounds();
+            if (r.width > 0 && r.height > 0) {
+                comps.add (hull);
+            }
         }
 
         return comps;
