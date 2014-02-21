@@ -48,7 +48,12 @@ public class ZExplorer extends JFrame
     static final ImageIcon SORT_ICON =
         new ImageIcon (ZExplorer.class.getResource
                        ("resources/sort-number.png"));
-
+    static final ImageIcon UP_ICON =
+        new ImageIcon (ZExplorer.class.getResource
+                       ("resources/navigation-090-button.png"));
+    static final ImageIcon DOWN_ICON =
+        new ImageIcon (ZExplorer.class.getResource
+                       ("resources/navigation-270-button.png"));
 
 
     class ZZPanel extends ZPanel {
@@ -80,6 +85,10 @@ public class ZExplorer extends JFrame
 
         void reload () {
             ((ImageStackTreeModel)getModel()).reload();
+        }
+
+        void reload (DefaultMutableTreeNode node) {
+            ((ImageStackTreeModel)getModel()).reload(node);
         }
 
         void expand (DefaultMutableTreeNode node) {
@@ -153,10 +162,12 @@ public class ZExplorer extends JFrame
         DefaultMutableTreeNode parent;
         File[] files;
         int progress;
+        int pos;
         ArrayList<ZPlane> zplanes = new ArrayList<ZPlane>();
         
-        ImageLoader (DefaultMutableTreeNode parent, File[] files) {
+        ImageLoader (DefaultMutableTreeNode parent, int pos, File[] files) {
             this.parent = parent;
+            this.pos = pos;
             this.files = files;
             progressBar.setValue(0);
             progressBar.setStringPainted(true);
@@ -183,7 +194,12 @@ public class ZExplorer extends JFrame
             for (ZPlane zp : chunk) {
                 DefaultMutableTreeNode node = 
                     new DefaultMutableTreeNode (zp, false);
-                parent.add(node);
+                if (pos < 0) {
+                    parent.add(node);
+                }
+                else {
+                    parent.insert(node, ++pos);
+                }
             }
             imageStackTree.reload();
             imageStackTree.expand(parent);
@@ -279,6 +295,7 @@ public class ZExplorer extends JFrame
         JSplitPane split = new JSplitPane (JSplitPane.HORIZONTAL_SPLIT);
 	split.setDividerSize(5);
 	split.setResizeWeight(.20);
+        split.setDividerLocation(250);
 	//split.setOneTouchExpandable(true);
         split.setLeftComponent(createNavPane ());
         split.setRightComponent(createContentPane ());
@@ -343,9 +360,20 @@ public class ZExplorer extends JFrame
         delImageBtn = btn;
 
         toolbar.addSeparator();
+        toolbar.add(btn = createToolbarButton (UP_ICON));
+        btn.setToolTipText("Move up");
+        btn.setActionCommand("MoveUp");
+        
+        toolbar.add(btn = createToolbarButton (DOWN_ICON));
+        btn.setToolTipText("Move down");
+        btn.setActionCommand("MoveDown");
+
+        /*
+        toolbar.addSeparator();
         toolbar.add(btn = createToolbarButton (SORT_ICON));
         btn.setToolTipText("Sort images");
         btn.setActionCommand("SortImages");
+        */
 
         return toolbar;
     }
@@ -444,8 +472,54 @@ public class ZExplorer extends JFrame
         else if ("SortImages".equals(cmd)) {
             sortImages ();
         }
+        else if ("MoveUp".equals(cmd)) {
+            moveUp ();
+        }
+        else if ("MoveDown".equals(cmd)) {
+            moveDown ();
+        }
         else if ("quit".equalsIgnoreCase(cmd)) {
             System.exit(0);
+        }
+    }
+
+    protected void moveUp () {
+        TreePath path = imageStackTree.getSelectionPath();
+        if (path != null) {
+            DefaultMutableTreeNode node = 
+                (DefaultMutableTreeNode)path.getLastPathComponent();
+            DefaultMutableTreeNode parent = 
+                (DefaultMutableTreeNode)node.getParent();
+            if (parent != null) {
+                int pos = parent.getIndex(node);
+                logger.info("node "+node+" position "+pos);
+                if (pos > 0) {
+                    parent.insert(node, pos -1);
+                    imageStackTree.reload(parent);
+                    imageStackTree.addSelectionPath
+                        (new TreePath (node.getPath()));
+                }
+            }
+        }
+    }
+
+    protected void moveDown () {
+        TreePath path = imageStackTree.getSelectionPath();
+        if (path != null) {
+            DefaultMutableTreeNode node = 
+                (DefaultMutableTreeNode)path.getLastPathComponent();
+            DefaultMutableTreeNode parent = 
+                (DefaultMutableTreeNode)node.getParent();
+            if (parent != null) {
+                int pos = parent.getIndex(node);
+                logger.info("node "+node+" position "+pos);
+                if (pos + 1 < parent.getChildCount()) {
+                    parent.insert(node, pos+1);
+                    imageStackTree.reload(parent);
+                    imageStackTree.addSelectionPath
+                        (new TreePath (node.getPath()));
+                }
+            }
         }
     }
 
@@ -468,7 +542,9 @@ public class ZExplorer extends JFrame
             addImageBtn.setEnabled(false);
             delImageBtn.setEnabled(false);
             delStackBtn.setEnabled(false);
+            zpanel.setZPlane(null);
             model.clear();
+            statusField.setText(null);
         }
     }
 
@@ -512,11 +588,14 @@ public class ZExplorer extends JFrame
             if (!(obj instanceof ZPlane))
                 return;
             
+            int pos = -1;
             if (!(obj instanceof ZStack)) { // add to parent
+                DefaultMutableTreeNode child = node;
                 node = (DefaultMutableTreeNode)node.getParent();
+                pos = node.getIndex(child);
             }
             
-            addImagesToStack (node);
+            addImagesToStack (node, pos);
         }
     }
 
@@ -540,14 +619,15 @@ public class ZExplorer extends JFrame
         }
     }
 
-    protected void addImagesToStack (DefaultMutableTreeNode parent) {
+    protected void addImagesToStack (DefaultMutableTreeNode parent, int pos) {
         chooser.setDialogTitle("Load image(s)...");
         chooser.setFileSelectionMode
             (JFileChooser.FILES_AND_DIRECTORIES);
         chooser.setMultiSelectionEnabled(true);
         int ans = chooser.showOpenDialog(this);
         if (ans == JFileChooser.APPROVE_OPTION) {
-            new ImageLoader (parent, chooser.getSelectedFiles()).execute();
+            new ImageLoader (parent, pos, 
+                             chooser.getSelectedFiles()).execute();
         }
     }
 

@@ -88,14 +88,18 @@ public class ZPlane {
 
         this.params.clear();
         this.params.put("Resolution", 
-                        String.format("%1$.3f um", getResolution ()));
+                        String.format("%1$.3f [um]", getResolution ()));
         this.params.put("Date", params.get(TIFFTags.TAG_DATETIME));
         this.params.put("Document", params.get(TIFFTags.TAG_DOCUMENTNAME));
         this.params.put("Width", image.getWidth());
         this.params.put("Height", image.getHeight());
         this.params.put("Polygons", polygons.size());
         this.params.put("Total Area", 
-                        String.format("%1$.1f um^2", getTotalArea ()));
+                        String.format("%1$.1f [um^2]", getTotalArea ()));
+        this.params.put("Dimension", String.format
+                        ("%1$.1f [um] x %2$.1f [um]", 
+                         image.getWidth()/getResolution(),
+                         image.getHeight()/getResolution()));
     }
 
     public Map getParams () { return params; }

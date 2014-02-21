@@ -25,6 +25,17 @@ public class ZPanel extends JPanel
     static final Color SPHEROID = new Color (0f, 1f, 0f, .2f);
     static final BasicStroke STROKE = new BasicStroke (2.f);
 
+    static BufferedImage LOGO;
+    static {
+        try {
+            LOGO = ImageIO.read(ZPanel.class.getResourceAsStream
+                                ("resources/ncgc_logo.png"));
+        }
+        catch (Exception ex) {
+            logger.warning("Can't load logo!");
+        }
+    }
+
     ZPlane zplane;
     AffineTransform tx = AffineTransform.getScaleInstance(1., 1.);
     int x, y, width, height; // scaled image width and height
@@ -95,15 +106,16 @@ public class ZPanel extends JPanel
 
     @Override
     protected void paintComponent (Graphics g) {
-        if (zplane == null) {
-            return;
-        }
-
 	g.setColor(Color.white);
 	g.fillRect(0, 0, getWidth(), getHeight());
 
         Graphics2D g2 = (Graphics2D)g;
-        draw (g2);
+        if (zplane == null) {
+            drawLogo (g2);
+        }
+        else {
+            draw (g2);
+        }
     }
 
     protected void reset () {
@@ -141,6 +153,23 @@ public class ZPanel extends JPanel
             //g2.fill(s);
             g2.draw(s);
         }
+    }
+
+    protected void drawLogo (Graphics2D g2) {
+        Rectangle bounds = getBounds ();
+        g2.setRenderingHint(RenderingHints.KEY_RENDERING, 
+			    RenderingHints.VALUE_RENDER_QUALITY);
+	g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, 
+			    RenderingHints.VALUE_ANTIALIAS_ON);
+
+        // scale the log to half the current size of the component
+        double scale = (double)bounds.width/(2*LOGO.getWidth());
+        AffineTransform afx = new AffineTransform ();
+        afx.translate(bounds.width/4., 
+                      (bounds.height - LOGO.getHeight()*scale)/2.);
+        afx.scale(scale, scale);
+
+        g2.drawRenderedImage(LOGO, afx);
     }
 
     public void load (File file) throws Exception {
