@@ -10,6 +10,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.RescaleOp;
 import java.awt.Shape;
 import java.awt.geom.PathIterator;
+import java.awt.geom.AffineTransform;
 
 
 public class Util {
@@ -107,6 +108,39 @@ public class Util {
                 bitmap.set(i, j, inverted ? p < threshold : p > threshold);
             }
         return bitmap;
+    }
+
+    static public boolean checkContainment 
+        (Shape container, Shape containee, AffineTransform afx) {
+
+        PathIterator it = containee.getPathIterator(afx);
+        double[] seg = new double[6];
+        while (!it.isDone()) {
+            int type = it.currentSegment(seg);
+            switch (type) {
+            case PathIterator.SEG_LINETO:
+                if (!container.contains(seg[0], seg[1]))
+                    return false;
+
+                break;
+
+            case PathIterator.SEG_QUADTO:
+                if (!container.contains(seg[0], seg[1])
+                    || !container.contains(seg[2], seg[3]))
+                    return false;
+                break;
+
+            case PathIterator.SEG_CUBICTO:
+                if (!container.contains(seg[0], seg[1])
+                    || !container.contains(seg[2], seg[3])
+                    || !container.contains(seg[4], seg[5]))
+                    return false;
+                break;
+            }
+            it.next();
+        }
+
+        return true;
     }
 
     /**

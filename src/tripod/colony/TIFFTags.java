@@ -27,6 +27,7 @@ public interface TIFFTags {
     static final int TAG_PLANARCONFIGURATION = 284;
     static final int   PLANARCONFIGURATION_CHUNKY = 1;
     static final int   PLANARCONFIGURATION_PLANAR = 2;
+    static final int TAG_SOFTWARE = 305;
     static final int TAG_DATETIME = 306;
     static final int TAG_DOCUMENTNAME = 269;
 }

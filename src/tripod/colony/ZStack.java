@@ -13,8 +13,10 @@ public class ZStack extends ZPlane implements FilenameFilter {
     static final Logger logger = Logger.getLogger(ZStack.class.getName());
 
     protected LinkedList<ZPlane> stack = new LinkedList<ZPlane>();
-    protected Float distance; // distance between consecutive ZPlanes (in um)
+    // distance between consecutive ZPlanes (in um)
+    protected Float distance = 5f; 
     protected BufferedImage fused;
+    private boolean dirty;
 
     public ZStack () {
     }
@@ -46,19 +48,6 @@ public class ZStack extends ZPlane implements FilenameFilter {
         return false;
     }
 
-    protected BufferedImage createFusedZPlane () {
-        if (stack.isEmpty())
-            throw new IllegalStateException ("ZStack is empty");
-        
-        BufferedImage fused = null;
-        for (ZPlane zp : stack) {
-            if (fused == null) {
-            }
-        }
-
-        return fused;
-    }
-
     public void setDistance (Float distance) {
         this.distance = distance;
     }
@@ -76,11 +65,19 @@ public class ZStack extends ZPlane implements FilenameFilter {
     }
     public ZPlane add (ZPlane zp) {
         if (fused == null) {
+            WritableRaster raster = 
+                zp.getImage().getData().createCompatibleWritableRaster();
+
+            logger.info("## creating fused image stack "+getName()); 
             fused = new BufferedImage 
-                (zp.getWidth(), zp.getHeight(), 
-                 BufferedImage.TYPE_USHORT_GRAY);
-            // copy the image
-            zp.getImage().copyData(fused.getRaster());
+                (zp.getImage().getColorModel(), raster, true, null);
+            params.clear();
+            params.putAll(zp.getParams());
+            // override some properties here
+            params.put("Document", "Fused image for image stack "+getName());
+            if (distance != null)
+                params.put("ZPlaneSpacing", 
+                           String.format("%1$.1f [um]", distance));
         }
         else if (zp.getWidth() != fused.getWidth()
                  || zp.getHeight() != fused.getHeight())
@@ -110,13 +107,25 @@ public class ZStack extends ZPlane implements FilenameFilter {
             src = null;
             des = null;
         }
-
+        dirty = true;
         stack.add(zp);
+
         return zp;
     }
 
+    public void remove (ZPlane zplane) {
+        stack.remove(zplane);
+    }
+
+    public boolean contains (String name) {
+        for (ZPlane zp : stack)
+            if (name.equals(zp.getName()))
+                return true;
+        return false;
+    }
+
     public void fuse () {
-        setImage (fused, false); // generate a fused image
+        setImage (fused); // generate a fused image
     }
     public int size () { return stack.size(); }
     public void clear () { 

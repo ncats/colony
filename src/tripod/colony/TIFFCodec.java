@@ -10,6 +10,7 @@ import java.awt.image.ColorModel;
 import java.awt.image.Raster;
 import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;;
+import java.awt.image.WritableRaster;
 import com.sun.media.jai.codec.*;
 
 public class TIFFCodec implements TIFFTags {
@@ -47,40 +48,25 @@ public class TIFFCodec implements TIFFTags {
                     }
                     break;
                     
-                case TAG_XRESOLUTION:
-                    params.put(TAG_XRESOLUTION, f.getAsFloat(0));
-                    break;
-                    
-                case TAG_YRESOLUTION:
-                    params.put(TAG_YRESOLUTION, f.getAsFloat(0));
-                    break;
-                
-                case TAG_ROWSPERSTRIP:
-                    params.put(TAG_ROWSPERSTRIP, f.getAsFloat(0));
-                    break;
-                    
                 case TAG_PHOTOMETRIC:
-                    params.put(TAG_PHOTOMETRIC, f.getAsInt(0));
-                    break;
-                    
                 case TAG_BITSPERSAMPLE:
-                    params.put(TAG_BITSPERSAMPLE, f.getAsInt(0));
+                case TAG_SAMPLESPERPIXEL:
+                    params.put(tag, f.getAsInt(0));
                     break;
                     
-                case TAG_IMAGEWIDTH: 
-                    params.put(TAG_IMAGEWIDTH, f.getAsFloat(0));
-                    break;
-                    
-                case TAG_IMAGELENGTH:	
-                    params.put(TAG_IMAGELENGTH, f.getAsFloat(0));
+                case TAG_IMAGEWIDTH:
+                case TAG_IMAGELENGTH:
+                case TAG_XRESOLUTION:
+                case TAG_YRESOLUTION:
+                case TAG_ROWSPERSTRIP:
+                    params.put(tag, f.getAsFloat(0));
                     break;
 
                 case TAG_DATETIME:
-                    params.put(TAG_DATETIME, f.getAsString(0));
-                    break;
-
                 case TAG_DOCUMENTNAME:
-                    params.put(TAG_DOCUMENTNAME, f.getAsString(0));
+                case TAG_SOFTWARE:
+                case TAG_IMAGEDESCRIPTION:
+                    params.put(tag, f.getAsString(0));
                     break;
                 }
             }
@@ -99,8 +85,14 @@ public class TIFFCodec implements TIFFTags {
           }
 	*/
 
+        Integer photo = (Integer)params.get(TAG_PHOTOMETRIC);
+        RenderedImage image = decoder.decodeAsRenderedImage();
+        if (photo != null && photo == PHOTOMETRIC_WHITEISZERO) {
+            int bps = (Integer)params.get(TAG_BITSPERSAMPLE);
+        }
+
 	logger.info(file + " has " + ndirs + " image; "+params);
-        return decoder.decodeAsRenderedImage();
+        return image;
     }
 
     public static void encode (String file, RenderedImage image) 
@@ -146,5 +138,15 @@ public class TIFFCodec implements TIFFTags {
         ImageEncoder encoder = ImageCodec.createImageEncoder
             ("TIFF", os, param);
         encoder.encode(raster, model);        
+    }
+
+    public static void main (String[] argv) throws Exception {
+        for (String a : argv) {
+            Map params = new HashMap ();
+            RenderedImage image = decode (new File (a), params);
+            javax.imageio.ImageIO.write(Util.rescale(image.getData(), 5000),
+                                        "png", new File ("image.png"));
+
+        }
     }
 }

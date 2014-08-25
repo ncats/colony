@@ -87,7 +87,7 @@ public class ColonyImagePane extends JPanel implements MouseMotionListener {
     }
 
     public RenderedImage getImage () { return image; }
-
+    public ColonyAnalysis getColony () { return colony; }
 
     @Override
     protected void paintComponent (Graphics g) {
@@ -207,7 +207,7 @@ public class ColonyImagePane extends JPanel implements MouseMotionListener {
         RenderedImage image = TIFFCodec.decode(new File (file));
         if (image != null) {
             cip.setRaster(image.getData());
-            //TIFFCodec.encode("colony.tif", cip.getImage());
+            TIFFCodec.encode("threshold.tif", cip.getColony().getImage(ColonyAnalysis.Type.Threshold));
         }
         
         final JFrame f = new JFrame ();

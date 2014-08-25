@@ -5,7 +5,7 @@
   <property name="src" value="src"/>
   <property name="dist" value="dist"/>
   <property name="deploy" value="deploy"/>
-  <property name="jarfile" value="colony.jar"/>
+  <property name="jarfile" value="zstack.jar"/>
 
   <path id="compile.classpath">
     <fileset dir="${lib}">
@@ -49,16 +49,26 @@
   </target>
 
   <target name="dist" depends="compile">
-    <jar jarfile="${dist}/${jarfile}" basedir=".">
+    <jar jarfile="${dist}/${jarfile}"
+         basedir="${build}"
+         includes="**">
        <manifest>
           <attribute name="Built-By" value="${user.name}"/>
+          <attribute name="Main-Class" value="tripod.colony.ZExplorer"/>
+          <attribute name="Permissions" value="all-permissions"/>
+          <attribute name="Application-Name" value="NCGC ZExplorer"/>
+          <attribute name="Codebase" value="*.nih.gov"/>
        </manifest>
     </jar>
   </target>
 
   <target name="deploy" depends="dist">
+    <signjar alias="QHTS" keystore="../tripod/etc/ncats-keystore.bin"
+                 storepass="NCATS9800">
+        <fileset dir="${dist}" includes="${jarfile}"/>
+    </signjar>
     <copy todir="${deploy}">
-      <fileset dir="." includes="${dist}/${jarfile}"/>
+      <fileset dir="${dist}" includes="${jarfile}"/>
     </copy>
   </target>
 

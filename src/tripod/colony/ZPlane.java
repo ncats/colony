@@ -33,6 +33,7 @@ public class ZPlane {
     protected ArrayList<Shape> polygons = new ArrayList<Shape>();
     protected int minPolygonSize = MIN_POLYGON_SIZE;
     protected Map params = new TreeMap ();
+    protected RasterStats stats;
 
     // in terms of um; assume x- and y-resolution are the same
     protected Float resolution;
@@ -82,24 +83,55 @@ public class ZPlane {
             res = 2.54e4f; // 1in = 2.54cm
         }
 
+        this.params.clear();
         setResolution (Math.min(xres, yres) / res);
         setImage (image);
         name = file.getName(); // default name
+        setProperties (params);
+    }
 
-        this.params.clear();
-        this.params.put("Resolution", 
-                        String.format("%1$.3f [um]", getResolution ()));
-        this.params.put("Date", params.get(TIFFTags.TAG_DATETIME));
-        this.params.put("Document", params.get(TIFFTags.TAG_DOCUMENTNAME));
-        this.params.put("Width", image.getWidth());
-        this.params.put("Height", image.getHeight());
-        this.params.put("Polygons", polygons.size());
-        this.params.put("Total Area", 
-                        String.format("%1$.1f [um^2]", getTotalArea ()));
-        this.params.put("Dimension", String.format
+    protected void setProperties (Map props) {
+        // meta properties
+        params.put("Resolution", 
+                        String.format("%1$.3f [pixels/um]", getResolution ()));
+        params.put("DateTime", props.get(TIFFTags.TAG_DATETIME));
+        params.put("Document", props.get(TIFFTags.TAG_DOCUMENTNAME));
+        params.put("Width", image.getWidth());
+        params.put("Height", image.getHeight());
+        params.put("Dimension", String.format
                         ("%1$.1f [um] x %2$.1f [um]", 
                          image.getWidth()/getResolution(),
                          image.getHeight()/getResolution()));
+        params.put("BitsPerSample", 
+                   props.get(TIFFTags.TAG_BITSPERSAMPLE));
+        params.put("SamplesPerPixel",
+                   props.get(TIFFTags.TAG_SAMPLESPERPIXEL));
+
+        Integer photo = (Integer)props.get(TIFFTags.TAG_PHOTOMETRIC);
+        if (photo != null) {
+            String photometric = null;
+            switch (photo) {
+            case TIFFTags.PHOTOMETRIC_WHITEISZERO: 
+                photometric = "WhiteIsZero";
+                break;
+            case TIFFTags.PHOTOMETRIC_BLACKISZERO: 
+                photometric = "BlackIsZero";
+                break;
+            case TIFFTags.PHOTOMETRIC_RGB: 
+                photometric = "RGB";
+                break;
+            case TIFFTags.PHOTOMETRIC_PALETTE: 
+                photometric = "Palette";
+                break;
+            case TIFFTags.PHOTOMETRIC_MASK: 
+                photometric = "Mask";
+                break;
+            }
+            params.put("Photometric",photometric);
+        }
+        params.put("ImageDescription", 
+                   props.get(TIFFTags.TAG_IMAGEDESCRIPTION));
+        params.put("Software",  props.get(TIFFTags.TAG_SOFTWARE));
     }
 
     public Map getParams () { return params; }
@@ -119,7 +151,7 @@ public class ZPlane {
             }
             raster = image.getData();
 
-            RasterStats stats = new RasterStats (raster);
+            stats = new RasterStats (raster);
             if (generateBitmap) {
                 bitmap = Util.threshold
                     (raster, (int)(stats.getMeanValue()+0.5), false);
@@ -145,6 +177,12 @@ public class ZPlane {
             bitmap = null;
         }
         this.image = image;
+
+        // update calculated properties 
+        this.params.put("Polygons", polygons.size());
+        this.params.put("Total Area", 
+                        String.format("%1$.1f [um^2]", getTotalArea ()));
+
         pcs.firePropertyChange("image", old, image);
     }
 
@@ -165,8 +203,56 @@ public class ZPlane {
         return total;
     }
 
+    public double getArea (Shape polygon) {
+        double area = Util.area(polygon);
+        if (resolution != null)
+            return  area / resolution;
+        return area;
+    }
+
+    public double getPerimeter (Shape polygon) {
+        PathIterator it = polygon.getPathIterator(null);
+        double[] coord = new double[6];
+        double dia = 0., x = 0, y = 0;
+        for (int n = 0; !it.isDone(); ++n) {
+            int type = it.currentSegment(coord);
+            if (PathIterator.SEG_LINETO == type) {
+                if (n == 0) dia = 0.;
+                else dia += Point2D.distance(x, y, coord[0], coord[1]);
+            }
+            else if (PathIterator.SEG_CLOSE == type) {
+                dia += Point2D.distance(x, y, coord[0], coord[1]);
+            }
+            it.next();
+        }
+        
+        return resolution != null ? dia/resolution : dia;
+    }
+
+    public Histogram getHistogram (Shape polygon) {
+        if (isEmpty ()) {
+            throw new IllegalStateException ("No image available!");
+        }
+
+        if (polygon == null) {
+            return null;
+        }
+
+        Histogram hist = new Histogram 
+            (100, stats.getMinValue(), stats.getMaxValue());
+        Rectangle rect = polygon.getBounds();
+        Raster raster = getImage().getData();
+        for (int y = 0; y < raster.getHeight(); ++y)
+            for (int x = 0; x < raster.getWidth(); ++x)
+                if (polygon.contains(x, y)) {
+                    int pix = raster.getSample(x, y, 0);
+                    hist.increment(pix);
+                }
+        return hist;
+    }
+
     public int get (int x, int y) {
-        return raster.getSample(x, y, 0);
+        return raster != null ? raster.getSample(x, y, 0) : -1;
     }
     public int getWidth () { 
         return image != null ? image.getWidth() : 0; 
@@ -188,7 +274,7 @@ public class ZPlane {
 
     public Bitmap getBitmap () { return bitmap; }
     public RenderedImage getImage () { return image; }
-
+    public boolean isEmpty () { return image == null; }
 
     public void addPropertyChangeListener (PropertyChangeListener l) {
         pcs.addPropertyChangeListener(l);

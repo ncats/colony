@@ -6,6 +6,7 @@ import java.util.logging.Level;
 import java.util.*;
 import java.io.*;
 import java.awt.*;
+import java.awt.geom.*;
 import java.awt.event.*;
 import javax.swing.*;
 import javax.swing.event.*;
@@ -17,51 +18,31 @@ import com.jgoodies.looks.plastic.Plastic3DLookAndFeel;
 import com.jidesoft.swing.JideTabbedPane;
 
 public class ZExplorer extends JFrame 
-    implements ActionListener {
+    implements ActionListener, Icons {
 
     static final Logger logger = Logger.getLogger(ZExplorer.class.getName());
 
-    static final ImageIcon INBOXPLUS_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/inbox--plus.png"));
-    static final ImageIcon INBOXMINUS_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/inbox--minus.png"));
-    static final ImageIcon PLUS_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/plus.png"));
-    static final ImageIcon MINUS_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/minus.png"));
-    static final ImageIcon INBOXIMAGE_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/inbox-image.png"));
-    static final ImageIcon IMAGESTACK_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/images-stack.png"));
-    static final ImageIcon IMAGE_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/image.png"));
-    static final ImageIcon MAGNIFIER_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/magnifier.png"));
-    static final ImageIcon SORT_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/sort-number.png"));
-    static final ImageIcon UP_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/navigation-090-button.png"));
-    static final ImageIcon DOWN_ICON =
-        new ImageIcon (ZExplorer.class.getResource
-                       ("resources/navigation-270-button.png"));
-
-
     class ZZPanel extends ZPanel {
+        Map<Shape, Histogram> cache = new HashMap<Shape, Histogram>();
+
         @Override
-        protected void pick (Point pt) {
+        protected void pick (Point pt, Shape polygon) {
             statusField.setText(String.format
                                 ("(%1$d,%2$d,%3$d)", 
                                  pt.x, pt.y, getZPlane().get(pt.x, pt.y)));
+            updatePolygon (getZPlane (), polygon);
+            if (polygon != getCurrentPolygon ()) {
+                Histogram hist = cache.get(polygon);
+                if (hist == null) {
+                    hist = getZPlane().getHistogram(polygon);
+                    cache.put(polygon, hist);
+                }
+                hpp.setData(zplane.getName(), hist);
+            }
+        }
+
+        public void clear () {
+            cache.clear();
         }
     }
 
@@ -102,17 +83,28 @@ public class ZExplorer extends JFrame
             return (DefaultMutableTreeNode) getModel().getRoot(); 
         }
 
-        void removeSelection () {
-            TreePath path = getSelectionPath ();
-            if (path != null) {
-                DefaultMutableTreeNode node = 
-                    (DefaultMutableTreeNode)path.getLastPathComponent();
-                DefaultMutableTreeNode parent = 
-                    (DefaultMutableTreeNode)node.getParent();
-                node.removeFromParent();
-                node.setUserObject(null);
+        void removeSelections () {
+            TreePath[] paths = getSelectionPaths ();
+            if (paths != null) {
+                Set<DefaultMutableTreeNode> parents = 
+                    new HashSet<DefaultMutableTreeNode>();
+
+                for (TreePath p : paths) {
+                    DefaultMutableTreeNode node = 
+                        (DefaultMutableTreeNode)p.getLastPathComponent();
+                    DefaultMutableTreeNode parent = 
+                        (DefaultMutableTreeNode)node.getParent();
+                    node.removeFromParent();
+                    Object obj = parent.getUserObject();
+                    if (obj instanceof ZStack) {
+                        ((ZStack)obj).remove((ZPlane)node.getUserObject());
+                    }
+                    node.setUserObject(null);
+                    parents.add(parent);
+                }
                 reload ();
-                expand (parent);
+                for (DefaultMutableTreeNode parent : parents)
+                    expand (parent);
             }
         }
 
@@ -161,9 +153,8 @@ public class ZExplorer extends JFrame
     class ImageLoader extends SwingWorker<Integer, ZPlane> {
         DefaultMutableTreeNode parent;
         File[] files;
-        int progress;
+        volatile int progress;
         int pos;
-        ArrayList<ZPlane> zplanes = new ArrayList<ZPlane>();
         
         ImageLoader (DefaultMutableTreeNode parent, int pos, File[] files) {
             this.parent = parent;
@@ -175,18 +166,26 @@ public class ZExplorer extends JFrame
 
         @Override
         protected Integer doInBackground () {
+            ZStack zstack = (ZStack)parent.getUserObject();
             for (File f : files) {
-                try {
-                    statusField.setText("Loading "+f.getName()+"...");
-                    ZPlane zp = new ZPlane (f);
-                    zplanes.add(zp);
-                    publish (zp);
-                }
-                catch (Exception ex) {
-                    logger.log(Level.SEVERE, "Can't load file "+f.getName());
+                String name = f.getName();
+                if (!zstack.contains(name)) {
+                    try {
+                        statusField.setText("Loading "+name+"...");
+                        ZPlane zp = new ZPlane (f);
+                        TIFFCodec.encode("zplane.tif", zp.getDisplay());
+
+                        zstack.add(zp);
+                        publish (zp);
+                    }
+                    catch (Exception ex) {
+                        logger.log(Level.SEVERE, "Can't load file "+name);
+                    }
                 }
             }
-            return zplanes.size();
+            
+            zstack.fuse();
+            return progress;
         }
 
         @Override
@@ -281,8 +280,9 @@ public class ZExplorer extends JFrame
     ImageStackTree imageStackTree;
     JSlider scaleSlider;
     JToolBar toolbar;
-    JTable propsTable;
+    JTable propsTable, polyTable;
     JButton addImageBtn, delImageBtn, delStackBtn;
+    HistogramPlotPane hpp = new HistogramPlotPane ();
 
     public ZExplorer () {
         initUI ();
@@ -363,10 +363,38 @@ public class ZExplorer extends JFrame
         toolbar.add(btn = createToolbarButton (UP_ICON));
         btn.setToolTipText("Move up");
         btn.setActionCommand("MoveUp");
-        
+
         toolbar.add(btn = createToolbarButton (DOWN_ICON));
         btn.setToolTipText("Move down");
         btn.setActionCommand("MoveDown");
+
+        toolbar.addSeparator();
+        toolbar.add(btn = createToolbarButton (TASKSELECT_ICON));
+        btn.setToolTipText("Annotation tools");
+        btn.setActionCommand("AnnotationTool");
+
+        JPopupMenu popup = new JPopupMenu ();
+        JMenuItem item;
+        ButtonGroup bg = new ButtonGroup ();
+        popup.add(item = new JCheckBoxMenuItem ("Rectangle", SHAPE_ICON));
+        item.setActionCommand("RectangleAnnotation");
+        item.addActionListener(this);
+        item.setSelected(true);
+        bg.add(item);
+
+        popup.add(item = new JCheckBoxMenuItem ("Line", LINE_ICON));
+        item.setActionCommand("LineAnnotation");
+        item.addActionListener(this);
+        bg.add(item);
+        btn.putClientProperty("PopupMenu", popup);
+
+        popup.add(item = new JCheckBoxMenuItem ("Ellipse", ELLIPSE_ICON));
+        item.setActionCommand("EllipseAnnotation");
+        item.addActionListener(this);
+        bg.add(item);
+        btn.putClientProperty("PopupMenu", popup);
+
+        popup.pack();
 
         /*
         toolbar.addSeparator();
@@ -403,11 +431,45 @@ public class ZExplorer extends JFrame
         return pane;
     }
 
-    protected Component createPropsPane () {
+    protected void updatePolygon (ZPlane zplane, Shape polygon) {
+        PropertiesTableModel model = 
+            (PropertiesTableModel)polyTable.getModel();
+
+        if (polygon == null) {
+            model.clear();
+            hpp.clear();
+
+            return;
+        }
+
+        Map props = new TreeMap ();
+        Rectangle r = polygon.getBounds();
+        props.put("Bounds", String.format("["+r.x+","+r.y+","
+                                          +r.width+","+r.height+"]"));
+        if (polygon instanceof Line2D) {
+            props.put("Length [um]", 0);
+        }
+        else {
+            props.put("Area [um^2]", String.format
+                      ("%1$.1f", zplane.getArea(polygon)));
+            props.put("Perimeter [um]", String.format
+                      ("%1$.1f", zplane.getPerimeter(polygon)));
+        }
+        model.setProperties(props);
+    }
+
+    protected Component createPropsPane () {        
+        JTabbedPane tab = new JTabbedPane ();
+        propsTable = new JTable (new PropertiesTableModel ());
+        tab.addTab("Properties", new JScrollPane (propsTable));
+        polyTable = new JTable (new PropertiesTableModel ());
+        tab.addTab("Polygons", new JScrollPane (polyTable));
+        tab.addTab("Histogram", hpp);
+
         JPanel pane = new JPanel (new BorderLayout (0, 0));
         pane.setBorder(BorderFactory.createEmptyBorder(1,1,1,1));
-        propsTable = new JTable (new PropertiesTableModel ());
-        pane.add(new JScrollPane (propsTable));
+        pane.add(tab);
+
         return pane;
     }
 
@@ -456,6 +518,7 @@ public class ZExplorer extends JFrame
     }
 
     public void actionPerformed (ActionEvent e) {
+        JComponent comp = (JComponent)e.getSource();
         String cmd = e.getActionCommand();
         if ("NewImageStack".equals(cmd)) {
             newImageStack ();
@@ -467,7 +530,7 @@ public class ZExplorer extends JFrame
             addImage ();
         }
         else if ("RemoveImage".equals(cmd)) {
-            imageStackTree.removeSelection();
+            imageStackTree.removeSelections();
         }
         else if ("SortImages".equals(cmd)) {
             sortImages ();
@@ -477,6 +540,19 @@ public class ZExplorer extends JFrame
         }
         else if ("MoveDown".equals(cmd)) {
             moveDown ();
+        }
+        else if ("AnnotationTool".equals(cmd)) {
+            JPopupMenu popup = (JPopupMenu)comp.getClientProperty("PopupMenu");
+            popup.show(comp, 0, comp.getHeight());
+        }
+        else if ("LineAnnotation".equals(cmd)) {
+            zpanel.setAnnotationTool(ZPanel.AnnotationTool.Line);
+        }
+        else if ("RectangleAnnotation".equals(cmd)) {
+            zpanel.setAnnotationTool(ZPanel.AnnotationTool.Rectangle);
+        }
+        else if ("EllipseAnnotation".equals(cmd)) {
+            zpanel.setAnnotationTool(ZPanel.AnnotationTool.Ellipse);
         }
         else if ("quit".equalsIgnoreCase(cmd)) {
             System.exit(0);
@@ -543,6 +619,7 @@ public class ZExplorer extends JFrame
             delImageBtn.setEnabled(false);
             delStackBtn.setEnabled(false);
             zpanel.setZPlane(null);
+            hpp.clear();
             model.clear();
             statusField.setText(null);
         }
