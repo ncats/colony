@@ -99,6 +99,13 @@
          <arg value="data/Cy5_3.tif"/>
      </java>
   </target>
+  <target name="test4" depends="compile">
+     <echo message="=== Colony tests "/>
+     <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+            classpathref="lib.classpath" fork="true">
+         <arg value="nucleus/RatBrain_ROI-1_DAPI.tif"/>
+     </java>
+  </target>
   <target name="zpanel" depends="compile">
      <echo message="=== Spheroid test "/>
      <java classname="tripod.colony.ZPanel" maxmemory="256m"
