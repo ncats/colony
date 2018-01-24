@@ -40,7 +40,8 @@ public class ColonyAnalysis {
     protected Bitmap skeleton; // skeleton of bitmap
     protected Raster raster; // current raster
 
-
+    Grayscale grayscale; // grayscale of raster
+    
     /** 
      * Analysis parameters
      */
@@ -66,29 +67,63 @@ public class ColonyAnalysis {
     public int getRange () { return range; }
 
     public void setThreshold (int threshold) { this.threshold = threshold; }
+    public void setThresholdScale (double scale) {
+        if (grayscale == null)
+            throw new RuntimeException ("No raster data has been set!");
+        
+        double offset = (grayscale.inverted() ? 1.-scale : scale)
+            *(grayscale.max() - grayscale.min())/2.0;
+        threshold = (int)(grayscale.min() + offset + .5);
+    }
+    
     public int getThreshold () { return threshold; }
 
     public void setRaster (Raster raster) {
         if (raster == null) {
             throw new IllegalArgumentException ("Input raster is null");
         }
-        if (raster.getNumBands() > 1) {
-            logger.warning("Input raster has "+raster.getNumBands()
-                           +" samples per pixel; using only first sample!");
-        }
-
+        
         this.raster = raster;
         this.stats = new RasterStats (raster);
 
         // create a grayscale of the input raster
-        BufferedImage img = new BufferedImage 
-            (raster.getWidth(), raster.getHeight(), 
-             BufferedImage.TYPE_USHORT_GRAY);
-        img.setData(raster);
-        BufferedImage old = imageStack.put(Type.Raster, img);
-        firePropertyChange ("raster", old, img);
+        grayscale = new Grayscale (raster);
+        setThresholdScale (0.6);
+        
+        BufferedImage img = grayscale.getImage();
+        debug ("grayscale.png", img);
+
+        int type = BufferedImage.TYPE_INT_ARGB;
+        switch (raster.getNumBands()) {
+        case 1:
+            type = BufferedImage.TYPE_BYTE_GRAY;
+            break;
+        case 3:
+            type = BufferedImage.TYPE_INT_RGB;
+            break;
+        }
+        BufferedImage argb = new BufferedImage 
+            (raster.getWidth(), raster.getHeight(), type);
+        argb.setData(raster);
+        
+        BufferedImage old = imageStack.put(Type.Raster, argb);
+        firePropertyChange ("raster", old, argb);
+        
+        old = imageStack.put(Type.Rescaled, img);
+        firePropertyChange ("rescale", old, img);
     }
+
+    void debug (String name, BufferedImage image) {
+        try {
+            ImageIO.write(image, "png", new FileOutputStream (name));
+        }
+        catch (IOException ex) {
+            logger.log(Level.SEVERE, "Can't save file \""+name+"\"", ex);
+        }
+    }
+    
     public Raster getRaster () { return raster; }
+    public Bitmap getBitmap () { return bitmap; }
 
     public void clear () {
         bitmap = null;
@@ -105,12 +140,12 @@ public class ColonyAnalysis {
             throw new IllegalStateException ("No raster available!");
         }
 
-        applyRescale (); // rescale input raster to 8-bit grayscale
+        //applyRescale (); // rescale input raster to 8-bit grayscale
         applyThreshold (); // thresold to generate binary image
         applyThinning (); // 
         extractPolygons ();
-        extractSegments ();
-        extractColonies ();
+        //extractSegments ();
+        //extractColonies ();
 
         return this;
     }
@@ -134,6 +169,8 @@ public class ColonyAnalysis {
         long start = System.currentTimeMillis();
         bitmap = Util.threshold(rescaled.getData(), threshold);
         BufferedImage img = bitmap.createBufferedImage();
+        debug ("bitmap.png", img);
+        
         BufferedImage old = imageStack.put(Type.Threshold, img);
         logger.info("## image thresholding ("+threshold+") in "
                     +String.format("%1$.3fs", 
@@ -150,6 +187,8 @@ public class ColonyAnalysis {
         long start = System.currentTimeMillis();
         skeleton = bitmap.thin();
         BufferedImage img = skeleton.createBufferedImage();
+        debug ("skeleton.png", img);
+        
         BufferedImage old = imageStack.put(Type.Skeleton, img);
         logger.info("## image thinning in "
                     +String.format("%1$.3fs", 

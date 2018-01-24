@@ -603,9 +603,9 @@ public class Bitmap implements Serializable, TIFFTags {
         BufferedImage image = new BufferedImage
             (width, height, BufferedImage.TYPE_BYTE_BINARY,
              // 1 - black, 0 - white
-             new IndexColorModel (1, 2, new byte[]{(byte)255,0},
-                                  new byte[]{(byte)255,0}, 
-                                  new byte[]{(byte)255,0}));
+             new IndexColorModel (1, 2, new byte[]{0, (byte)255},
+                                  new byte[]{0, (byte)255}, 
+                                  new byte[]{0, (byte)255}));
         image.setData(createRaster ());
         return image;
     }
@@ -1536,7 +1536,7 @@ public class Bitmap implements Serializable, TIFFTags {
 
         return segments;
     }
-
+    
     public static void main (String[] argv) throws Exception {
         Bitmap bm = new Bitmap (16, 16);
         java.util.Random rand = new java.util.Random ();

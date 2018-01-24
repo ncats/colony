@@ -11,3 +11,12 @@ Example of colony cell segementation:
 Example of spheroid segmentation image stack:
 
 ![spheroid](spheroid.png)
+
+
+Nuclei Viewer
+=============
+
+A simple viewer to browse nuclei segmentation from Kaggle's 2018
+data science bowl: https://www.kaggle.com/c/data-science-bowl-2018
+
+![NeucleiViewer](nuclei.png)

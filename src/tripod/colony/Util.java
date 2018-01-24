@@ -94,7 +94,16 @@ public class Util {
     }
 
     static public Bitmap threshold (Raster raster, int threshold) {
-        return threshold (raster, threshold, true);
+        // binary thresholding
+        int low = 0;
+        for (int i = 0; i < raster.getWidth(); ++i) 
+            for (int j = 0; j < raster.getHeight(); ++j) {
+                int p = raster.getSample(i, j, 0);
+                if (p < threshold)
+                    ++low;
+            }
+        int majority = raster.getWidth()*raster.getHeight()/3;
+        return threshold (raster, threshold, low < majority);
     }
 
     static public Bitmap threshold (Raster raster, 

@@ -38,9 +38,7 @@
            destdir="${build}"
 	   deprecation="on"
            debug="on"
-           fork="yes"
-           target="1.5"
-           source="1.5">
+           fork="yes">
       <classpath refid="compile.classpath"/>
     </javac>
     <copy todir="${build}">
@@ -106,6 +104,118 @@
          <arg value="nucleus/RatBrain_ROI-1_DAPI.tif"/>
      </java>
   </target>
+
+  <target name="test5" depends="compile">
+    <echo message="==== Colony tests 5"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">
+      <arg value="data-science-bowl-2018/train/ff599c7301daa1f783924ac8cbe3ce7b42878f15a39c2d19659189951f540f48/images/ff599c7301daa1f783924ac8cbe3ce7b42878f15a39c2d19659189951f540f48.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>      
+    </java>
+  </target>
+
+  <target name="test6" depends="compile">
+    <echo message="==== Colony tests 6"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">
+      <arg value="data-science-bowl-2018/test/fe9adb627a6f45747c5a8223b671774791ededf9364f6544be487c540107fa4f/images/fe9adb627a6f45747c5a8223b671774791ededf9364f6544be487c540107fa4f.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>
+    </java>
+  </target>
+  
+  <target name="test7" depends="compile">
+    <echo message="==== Colony tests 7"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">
+      <arg value="data-science-bowl-2018/train/ff3e512b5fb860e5855d0c05b6cf5a6bcc7792e4be1f0bdab5a00af0e18435c0/images/ff3e512b5fb860e5855d0c05b6cf5a6bcc7792e4be1f0bdab5a00af0e18435c0.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>      
+    </java>
+  </target>
+
+  <target name="test8" depends="compile">
+    <echo message="==== Colony tests 8"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">
+      <arg value="data-science-bowl-2018/train/00ae65c1c6631ae6f2be1a449902976e6eb8483bf6b0740d00530220832c6d3e/images/00ae65c1c6631ae6f2be1a449902976e6eb8483bf6b0740d00530220832c6d3e.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>      
+    </java>
+  </target>
+
+  <target name="test9" depends="compile">
+    <echo message="==== Colony tests 9"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">
+      <arg value="data-science-bowl-2018/test/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466/images/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466.png"/>
+      <arg value="scale=0.5"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>      
+    </java>
+  </target>
+
+  <target name="test10" depends="compile">
+    <echo message="==== Colony tests 10"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">  
+      <arg value="data-science-bowl-2018/test/1d9eacb3161f1e2b45550389ecf7c535c7199c6b44b1c6a46303f7b965e508f1/images/1d9eacb3161f1e2b45550389ecf7c535c7199c6b44b1c6a46303f7b965e508f1.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>      
+    </java>
+  </target>
+
+  <target name="test11" depends="compile">
+    <echo message="==== Colony tests 11"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">  
+      <arg value="data-science-bowl-2018/test/3c4c675825f7509877bc10497f498c9a2e3433bf922bd870914a2eb21a54fd26/images/3c4c675825f7509877bc10497f498c9a2e3433bf922bd870914a2eb21a54fd26.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>      
+    </java>
+  </target>
+
+  <target name="test12" depends="compile">
+    <echo message="==== Colony tests 12"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">  
+      <arg value="data-science-bowl-2018/train/1a11552569160f0b1ea10bedbd628ce6c14f29edec5092034c2309c556df833e/images/1a11552569160f0b1ea10bedbd628ce6c14f29edec5092034c2309c556df833e.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>
+      <arg value="scale=.5"/>      
+    </java>
+  </target>
+
+  <target name="test13" depends="compile">
+    <echo message="==== Colony tests 13"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">  
+      <arg value="data-science-bowl-2018/train/8f27ebc74164eddfe989a98a754dcf5a9c85ef599a1321de24bcf097df1814ca/images/8f27ebc74164eddfe989a98a754dcf5a9c85ef599a1321de24bcf097df1814ca.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>
+      <arg value="scale=1.0"/>      
+    </java>
+  </target>
+
+  <target name="test14" depends="compile">
+    <echo message="==== Colony tests 14"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">  
+      <arg value="data-science-bowl-2018/train/20b20ab049372d184c705acebe7af026d3580f5fd5a72ed796e3622e1685af2f/images/20b20ab049372d184c705acebe7af026d3580f5fd5a72ed796e3622e1685af2f.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>
+      <arg value="scale=.5"/>      
+    </java>
+  </target>
+
+  <target name="test15" depends="compile">
+    <echo message="==== Colony tests 15"/>
+    <java classname="tripod.colony.ColonyImagePane" maxmemory="2048m"
+          classpathref="lib.classpath" fork="true">  
+      <arg value="data-science-bowl-2018/train/74a7785530687a11ecd073e772f90912d9967d02407a192bfab282c35f55ab94/images/74a7785530687a11ecd073e772f90912d9967d02407a192bfab282c35f55ab94.png"/>
+      <arg value="mask=data-science-bowl-2018/stage1_train_labels.csv"/>
+      <arg value="scale=1"/>      
+    </java>
+  </target>
+  
+  <target name="nuclei" depends="compile">
+     <echo message="=== Nuclei viewer "/>
+     <java classname="tripod.colony.NucleiViewer" maxmemory="256m"
+            classpathref="lib.classpath" fork="true">
+     </java>
+  </target>
+  
   <target name="zpanel" depends="compile">
      <echo message="=== Spheroid test "/>
      <java classname="tripod.colony.ZPanel" maxmemory="256m"

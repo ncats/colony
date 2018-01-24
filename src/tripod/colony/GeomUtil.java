@@ -119,22 +119,26 @@ public class GeomUtil {
             Point2D pi = pts[i];
             while (true) {
                 Point2D p2 = stack.pop ();
-                Point2D p1 = stack.peek ();
-                double dir = ccw (p1, p2, pi);
-                if (DEBUG) {
-                    System.err.println
-                        ("p1=(" + p1.getX () + "," + p1.getY () + ") p2=("
-                         + p2.getX () + "," + p2.getY () + ") p"
-                         + i + "=(" + pi.getX () + "," + pi.getY ()
-                         + ") ccw=" + dir);
+                if (!stack.isEmpty()) {
+                    Point2D p1 = stack.peek ();
+                    double dir = ccw (p1, p2, pi);
+                    if (DEBUG) {
+                        System.err.println
+                            ("p1=(" + p1.getX () + "," + p1.getY () + ") p2=("
+                             + p2.getX () + "," + p2.getY () + ") p"
+                             + i + "=(" + pi.getX () + "," + pi.getY ()
+                             + ") ccw=" + dir);
+                    }
+                    if (dir >= 0.) { // push back
+                        stack.push (p2);
+                        break;
+                    }
+                    if (DEBUG) {
+                        logger.info ("removing " + p2);
+                    }
                 }
-                if (dir >= 0.) { // push back
-                    stack.push (p2);
+                else
                     break;
-                }
-                if (DEBUG) {
-                    logger.info ("removing " + p2);
-                }
             }
 
             stack.push (pi);
