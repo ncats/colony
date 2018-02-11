@@ -459,6 +459,11 @@ public class Bitmap implements Serializable, TIFFTags {
     public int width () { return width; }
     public int height () { return height; }
     public int scanline () { return scanline; }
+    public void clear () {
+        for (int i = 0; i < data.length; ++i)
+            data[i] = 0;
+    }
+    
     public int[] horizontalHistogram () {
         int[] hist = new int[height];
         for (int i = 0; i < height; ++i) 
@@ -497,7 +502,28 @@ public class Bitmap implements Serializable, TIFFTags {
         }
     }
 
+    public Bitmap and (Bitmap b) {
+        if (width != b.width || height != b.height)
+            throw new IllegalArgumentException
+                ("bitmaps have different sizes");
+        Bitmap target = new Bitmap (width, height);
+        for (int i = 0; i < data.length; ++i) {
+            target.data[i] = (byte)((data[i]&0xff)&(b.data[i]&0xff)&0xff);
+        }
+        return target;
+    }
 
+    public Bitmap or (Bitmap b) {
+        if (width != b.width || height != b.height)
+            throw new IllegalArgumentException
+                ("bitmaps have different sizes");
+        Bitmap target = new Bitmap (width, height);
+        for (int i = 0; i < data.length; ++i) {
+            target.data[i] = (byte)(((data[i]&0xff)|(b.data[i]&0xff))&0xff);
+        }
+        return target;
+    }
+    
     /*
      * 8-neighbor of p
      *   p(7)  p(0)  p(1)
@@ -1001,7 +1027,7 @@ public class Bitmap implements Serializable, TIFFTags {
                 if (label == Short.MAX_VALUE) {
                     logger.log (Level.SEVERE, "Max number of labels reached: "
                                 + label + "; truncating search!");
-                    break;
+                    return null;
                 }
                 // ensure there's enough space in the eqvtab
                 else if (label >= eqvtab.length) {

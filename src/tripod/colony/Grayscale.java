@@ -1,8 +1,12 @@
 package tripod.colony;
 
+import java.io.Serializable;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.FileOutputStream;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -22,11 +26,144 @@ import javax.imageio.ImageIO;
 public class Grayscale {
     static final Logger logger = Logger.getLogger(Grayscale.class.getName());
 
-    private Raster grayscale;
-    private int[] histogram = new int[256];
-    private double mean, stddev;
-    private int max, min;
-    private boolean inverted;
+    public static double R = 0.299;
+    public static double G = 0.587;
+    public static double B = 0.114;
+
+    interface PixelSource {
+        int get (int x, int y);
+    }
+    
+    public static class Channel implements Serializable {
+        private static final long serialVersionUID = 0x12345l;
+        
+        final public int width, height;
+        final public int[] histogram;
+        final public double[] pmf;
+        final short[] pixels;
+        final public int pmin, pmax;
+
+        Channel (int width, int height, PixelSource source) {
+            this.width = width;
+            this.height = height;
+            pixels = new short[width*height];
+            
+            histogram = new int[256];
+            int p, s, min = 256, max = 0;
+            for (int y = 0; y < height; ++y) {
+                s = y*width;
+                for (int x = 0; x < width; ++x) {
+                    p = pixels[s+x] = (short)(source.get(x, y) & 0xff);
+                    if (p > max) max = p;
+                    if (p < min) min = p;
+                    ++histogram[p];
+                }
+            }
+            pmin = min;
+            pmax = max;
+
+            pmf = new double[256];
+            double mass = 0.;
+            for (int i = 0; i < histogram.length; ++i)
+                mass += histogram[i];
+            for (int i = 0; i < histogram.length; ++i)
+                pmf[i] = histogram[i]/mass;
+        }
+        
+        public int get (int x, int y) { return pixels[y*width+x]; }
+        public Raster raster () {
+            WritableRaster raster = createByteRaster (width, height);
+            for (int y = 0, s; y < height; ++y) {
+                s = y*width;
+                for (int x = 0; x < width; ++x)
+                    raster.setSample(x, y, 0, pixels[s+x]);
+            }
+            return raster;
+        }
+        
+        public BufferedImage image () {
+            Raster raster = raster ();
+            BufferedImage img = new BufferedImage
+                (raster.getWidth(), raster.getHeight(), 
+                 BufferedImage.TYPE_BYTE_GRAY);
+            img.setData(raster);
+            return img;
+        }
+
+        public void write (File out) throws IOException {
+            write (new FileOutputStream (out));
+        }
+        
+        public void write (OutputStream out) throws IOException {
+            ImageIO.write(image (), "png", out);
+        }
+
+        public String toString () {
+            return getClass().getName()+"{width="+width+",height="+height+"}";
+        }
+    }
+
+    static abstract class RasterPixelSource implements PixelSource {
+        final Raster raster;
+        final double[] sample;
+        RasterPixelSource (Raster raster) {
+            this.raster = raster;
+            sample = new double[raster.getNumBands()];
+        }
+
+        public abstract int get (int x, int y);
+    }
+
+    public static class ChannelRGB extends Channel {
+        ChannelRGB (Raster raster) {
+            super (raster.getWidth(), raster.getHeight(),
+                   new RasterPixelSource (raster) {
+                       public int get (int x, int y) {
+                           return grayscale (raster.getPixel
+                                             (x, y, sample)) & 0xff;
+                       }
+                   });
+        }
+    }
+
+    public static class ChannelR extends Channel {
+        ChannelR (Raster raster) {
+            super (raster.getWidth(), raster.getHeight(),
+                   new RasterPixelSource (raster) {
+                       public int get (int x, int y) {
+                           raster.getPixel(x, y, sample);
+                           return (int)(sample[0]+0.5) & 0xff;
+                       }
+                   });
+        }
+    }
+
+    public static class ChannelG extends Channel {
+        ChannelG (Raster raster) {
+            super (raster.getWidth(), raster.getHeight(),
+                   new RasterPixelSource (raster) {
+                       public int get (int x, int y) {
+                           raster.getPixel(x, y, sample);
+                           return (int)(sample[1]+0.5) & 0xff;
+                       }
+                   });
+        }
+    }
+
+    public static class ChannelB extends Channel {
+        ChannelB (Raster raster) {
+            super (raster.getWidth(), raster.getHeight(),
+                   new RasterPixelSource (raster) {
+                       public int get (int x, int y) {
+                           raster.getPixel(x, y, sample);
+                           return (int)(sample[2]+0.5) & 0xff;
+                       }
+                   });
+        }
+    }
+    
+    private Channel[] channels;
+    private Raster raster;
 
     public Grayscale () {
     }
@@ -36,110 +173,74 @@ public class Grayscale {
     }
 
     public void setRaster (Raster raster) {
-        if (raster == null) {
-            throw new IllegalArgumentException ("Input raster is null");
+        if (raster == null || raster.getNumBands() == 0) {
+            throw new IllegalArgumentException ("Input raster is bogus!");
         }
-        grayscale = createRaster (raster);
+
+        List<Channel> channels = new ArrayList<>();
+        channels.add(new ChannelRGB (raster));
+        if (raster.getNumBands() > 1) {
+            channels.add(new ChannelR (raster));
+            channels.add(new ChannelG (raster));
+            channels.add(new ChannelB (raster));
+        }
+        this.channels = channels.toArray(new Channel[0]);
+        this.raster = raster;
     }
 
-    public Raster getRaster () { 
-        return grayscale; 
+    public Raster getRaster () { return raster; }
+    public int width () { return raster != null ? raster.getWidth() : -1; }
+    public int height () { return raster != null ? raster.getHeight() : -1; }
+    
+    public int getNumChannels () {
+        return channels != null ? channels.length : 0;
+    }
+    
+    public Channel getChannel (int channel) {
+        return channel < channels.length ? channels[channel] : null;
+    }
+    
+    // default channel
+    public Channel getChannel () {
+        return channels != null ? channels[0] : null;
     }
 
-    /*
-     * convert rgb raster into grayscale
-     */
-    protected Raster createRaster (Raster raster) {
-        int height = raster.getHeight();
-        int width = raster.getWidth();
-
-        max = 0;
-        min = Integer.MAX_VALUE;
-        for (int i = 0; i < histogram.length; ++i)
-            histogram[i] = 0;
-
-        WritableRaster outRaster = Raster.createWritableRaster
-                (new BandedSampleModel
-                 (DataBuffer.TYPE_BYTE, width, height, 1), null);
-        double[] sample = new double[raster.getNumBands()];
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; ++x) {
-                int s = grayscale (raster.getPixel(x, y, sample)) & 0xff;
-                if (s > max) max = s;
-                if (s < min) min = s;
-                
-                outRaster.setSample (x, y, 0, s);
-                ++histogram[s];
+    public Channel getChannel (String name) {
+        if (channels != null) {
+            for (int i = 0; i < channels.length; ++i) {
+                if (name.equals(channels[i].getClass().getName()))
+                    return channels[i];
             }
         }
-        
-        raster = outRaster;
-
-        mean = 0;
-        stddev = 0;
-        int cnt = 0, m = 0, n = 0;
-        for (int i = 0; i < histogram.length; ++i) {
-            int p = histogram[i];
-            if (p > 0) {
-                mean += p;
-                ++cnt;
-            }
-            if (p > m) {
-                m = p;
-                n = i;
-            }
-        }
-
-        if (cnt > 0) {
-            mean /= cnt;
-            for (int i = 0; i < histogram.length; ++i) {
-                int p = histogram[i];
-                if (p > 0) {
-                    double x = p - mean;
-                    stddev += x*x;
-                }
-            }
-            stddev = Math.sqrt(stddev/cnt);
-        }
-
-        inverted = n-min > max - n;
-        logger.info("## bands="+raster.getNumBands()+" range="
-                    +(max-min)+", min="+min+", max="+max
-                    +", max("+n+")="+m+" inverted="+inverted);
-
-        return raster;
+        return null;
     }
 
-    public boolean inverted () { return inverted; }
-
-    public BufferedImage getImage () {
-        if (grayscale == null) {
-            throw new IllegalStateException ("No buffer available");
+    public Channel getChannel (Class<? extends Channel> cls) {
+        if (channels != null) {
+            for (int i = 0; i < channels.length; ++i)
+                if (cls.isAssignableFrom(channels[i].getClass()))
+                    return channels[i];
         }
+        return null;
+    }
 
+    static WritableRaster createByteRaster (int width, int height) {
+        return Raster.createWritableRaster
+            (new BandedSampleModel
+             (DataBuffer.TYPE_BYTE, width, height, 1), null);
+    }
+
+    static BufferedImage createByteImage (Raster raster) {
         BufferedImage img = new BufferedImage
-            (grayscale.getWidth(), grayscale.getHeight(), 
+            (raster.getWidth(), raster.getHeight(), 
              BufferedImage.TYPE_BYTE_GRAY);
-        img.setData(grayscale);
+        img.setData(raster);
         return img;
     }
 
-    public int[] histogram () { return histogram; }
-    public double mean () { return mean; }
-    public double stddev () { return stddev; }
-    public int min () { return min; }
-    public int max () { return max; }
-
-    public void write (OutputStream out) throws IOException {
-        ImageIO.write(getImage (), "png", out);
-    }
-
     public static int grayscale (double[] p) {
-        int i = 0;
-        if (p.length == 4) ++i; // skip alpha channel
-        if (p.length >= 3)
-            return (int) (0.299 * p[i] + 0.587 * p[i+1]
-                          + 0.114 * p[i+2] + .5);
-        return (int)(p[0] + 0.5);
+        if (p.length == 1)
+            return (int)(p[0] + 0.5);
+        return (int) (R * p[0] + G * p[1] + B * p[2] + .5);
     }
 }

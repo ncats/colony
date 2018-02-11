@@ -215,6 +215,27 @@
             classpathref="lib.classpath" fork="true">
      </java>
   </target>
+
+  <target name="train" depends="compile">
+     <echo message="=== NucleiAnalysis training "/>
+     <java classname="tripod.colony.NucleiAnalysis$Train" maxmemory="256m"
+           classpathref="lib.classpath" fork="true">
+       <arg value="data-science-bowl-2018/stage1_train_labels.csv"/>
+       <arg value="train_images.txt"/>
+       <arg value="models"/>
+     </java>
+  </target>
+
+  <target name="predict" depends="compile">
+     <echo message="=== NucleiAnalysis prediction "/>
+     <java classname="tripod.colony.NucleiAnalysis$Predict" maxmemory="256m"
+           classpathref="lib.classpath" fork="true">
+       <arg value="models"/>
+       <arg value="data-science-bowl-2018/train_images/f29fd9c52e04403cd2c7d43b6fe2479292e53b2f61969d25256d2d2aca7c6a81.png"/>
+       <arg value="data-science-bowl-2018/test/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac/images/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac.png"/>
+     </java>
+  </target>
+  
   
   <target name="zpanel" depends="compile">
      <echo message="=== Spheroid test "/>

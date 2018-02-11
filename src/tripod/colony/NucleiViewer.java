@@ -49,6 +49,7 @@ public class NucleiViewer extends JFrame implements ActionListener {
     final JFileChooser fileChooser;
     final JLabel maskLabel;
     final JTree fileTree;
+    final JSpinner thresholdSpinner;
     
     File maskFile;
     File imageFile;
@@ -84,6 +85,21 @@ public class NucleiViewer extends JFrame implements ActionListener {
         scale.setToolTipText("Adjust image magnification");
         toolbar.add(scale);
         toolbar.addSeparator();
+
+        model = new SpinnerNumberModel (128, 1, 255, 1);
+        model.addChangeListener(new ChangeListener () {
+                public void stateChanged (ChangeEvent e) {
+                    SpinnerNumberModel model =
+                        (SpinnerNumberModel)e.getSource();
+                    Number n = model.getNumber();
+                    zpane.setThreshold(n.intValue());
+                }
+            });
+        thresholdSpinner = new JSpinner (model);
+        thresholdSpinner.setMaximumSize(new Dimension (100, 20));
+        thresholdSpinner.setToolTipText("Set threshold");
+        toolbar.add(thresholdSpinner);
+        toolbar.addSeparator();
         
         JCheckBox cb = new JCheckBox (SHOW_MASKS);
         cb.setToolTipText("Toggle mask/ground truth overlay");
@@ -96,6 +112,7 @@ public class NucleiViewer extends JFrame implements ActionListener {
         mask.addActionListener(this);
         toolbar.add(mask);
         toolbar.add(maskLabel = new JLabel ());
+
         
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         zpane = new ColonyImagePane ();
@@ -168,13 +185,17 @@ public class NucleiViewer extends JFrame implements ActionListener {
             imageFile = file;
             setTitle (title);
             saveBtn.setEnabled(true);
-            CodecRunLength crl = new CodecRunLength
-                (zpane.getColony().getBitmap());
-            for (CodecRunLength.Run[] r : crl.encode()) {
+            ((SpinnerNumberModel)thresholdSpinner.getModel())
+                .setValue(zpane.getThreshold());
+            
+            /*
+            RLE crl = new RLE (zpane.getColony().getBitmap());
+            for (RLE.Run[] r : crl.encode()) {
                 for (int i = 0; i < r.length; ++i)
                     logger.info(r[i].index()+" "+r[i].len());
                 logger.info("--");
             }
+            */
         }
         catch (IOException ex) {
             saveBtn.setEnabled(false);

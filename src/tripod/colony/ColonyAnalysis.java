@@ -66,16 +66,10 @@ public class ColonyAnalysis {
     }
     public int getRange () { return range; }
 
-    public void setThreshold (int threshold) { this.threshold = threshold; }
-    public void setThresholdScale (double scale) {
-        if (grayscale == null)
-            throw new RuntimeException ("No raster data has been set!");
-        
-        double offset = (grayscale.inverted() ? 1.-scale : scale)
-            *(grayscale.max() - grayscale.min())/2.0;
-        threshold = (int)(grayscale.min() + offset + .5);
+    public void setThreshold (int threshold) {
+        this.threshold = threshold;
+        applyThreshold ();
     }
-    
     public int getThreshold () { return threshold; }
 
     public void setRaster (Raster raster) {
@@ -88,10 +82,11 @@ public class ColonyAnalysis {
 
         // create a grayscale of the input raster
         grayscale = new Grayscale (raster);
-        setThresholdScale (0.6);
+        Grayscale.Channel channel = grayscale.getChannel();
+        threshold = (int)(channel.pmin + (channel.pmax-channel.pmin)/2.0 + .5);
         
-        BufferedImage img = grayscale.getImage();
-        debug ("grayscale.png", img);
+        BufferedImage img = channel.image();
+        //debug ("grayscale.png", img);
 
         int type = BufferedImage.TYPE_INT_ARGB;
         switch (raster.getNumBands()) {
@@ -112,6 +107,8 @@ public class ColonyAnalysis {
         old = imageStack.put(Type.Rescaled, img);
         firePropertyChange ("rescale", old, img);
     }
+
+    public Grayscale getGrayscale () { return grayscale; }
 
     void debug (String name, BufferedImage image) {
         try {
@@ -169,7 +166,7 @@ public class ColonyAnalysis {
         long start = System.currentTimeMillis();
         bitmap = Util.threshold(rescaled.getData(), threshold);
         BufferedImage img = bitmap.createBufferedImage();
-        debug ("bitmap.png", img);
+        //debug ("bitmap.png", img);
         
         BufferedImage old = imageStack.put(Type.Threshold, img);
         logger.info("## image thresholding ("+threshold+") in "
@@ -187,7 +184,7 @@ public class ColonyAnalysis {
         long start = System.currentTimeMillis();
         skeleton = bitmap.thin();
         BufferedImage img = skeleton.createBufferedImage();
-        debug ("skeleton.png", img);
+        //debug ("skeleton.png", img);
         
         BufferedImage old = imageStack.put(Type.Skeleton, img);
         logger.info("## image thinning in "

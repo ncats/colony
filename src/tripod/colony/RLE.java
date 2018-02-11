@@ -1,10 +1,13 @@
 package tripod.colony;
 
+import java.io.Serializable;
 import java.util.*;
 import java.util.logging.*;
 import java.awt.image.*;
 import java.awt.Rectangle;
 import java.awt.Shape;
+import java.awt.geom.Line2D;
+
 
 /* encode run-length format based on kaggle data science bowl 2018:
    In order to reduce the submission file size, our metric uses 
@@ -20,20 +23,39 @@ import java.awt.Shape;
    from top to bottom, then left to right: 1 is pixel (1,1), 2 is 
    pixel (2,1), etc.
 */
-public class CodecRunLength {
+public class RLE {
     static final Logger logger =
-        Logger.getLogger(CodecRunLength.class.getName());
+        Logger.getLogger(RLE.class.getName());
     
-    public static class Run {
-        int index; // 1-based 
-        int len;
-        Run (int index, int len) {
+    public static class Run implements Comparable<Run>, Serializable {
+        public int index; // 1-based 
+        public int len, stride;
+        public int x, y0, y1;
+        
+        public Run (int stride, int index, int len) {
             this.index = index;
             this.len = len;
+            this.stride = stride;
+            update ();
         }
-        
-        public int index () { return index; }
-        public int len () { return len; }
+
+        protected void update () {
+            x = (index-1) / stride;
+            y0 = (index-1) % stride;
+            y1 = y0 + (len-1);
+        }
+
+        public Line2D line () {
+            return new Line2D.Double((double)x, (double)y0,
+                                     (double)x, (double)y1);
+        }
+
+        public int compareTo (Run r) {
+            int d = index - r.index;
+            if (d == 0)
+                d = len - r.len;
+            return d;
+        }
         
         public String toString () {
             return index+" "+len;
@@ -42,7 +64,7 @@ public class CodecRunLength {
 
     final Bitmap bitmap;
 
-    public CodecRunLength (Bitmap bitmap) {
+    public RLE (Bitmap bitmap) {
         if (bitmap == null)
             throw new IllegalArgumentException ("Bitmap is null");
         this.bitmap = bitmap;
@@ -50,11 +72,11 @@ public class CodecRunLength {
 
     public Bitmap getBitmap () { return bitmap; }
     
-    public Collection<Run[]> encode () {
+    public List<Run[]> encode () {
         List<Run[]> runlens = new ArrayList<>();
         for (Shape s : bitmap.connectedComponents()) {
             Rectangle rect = s.getBounds();
-            logger.info("** component "+rect+ " **");
+            //logger.info("** component "+rect+ " **");
             List<Run> runs = new ArrayList<>();
             for (int x0 = rect.x, x1 = x0+rect.width; x0 < x1; ++x0) {
                 Run r = null;
@@ -63,16 +85,20 @@ public class CodecRunLength {
                         if (r != null)
                             ++r.len;
                         else
-                            r = new Run (x0*bitmap.height()+y0+1, 1);
+                            r = new Run (bitmap.height(),
+                                         x0*bitmap.height()+y0+1, 1);
                     }
                     else if (r != null) {
+                        r.update();
                         runs.add(r);
                         r = null;
                     }
                 }
                 
-                if (r != null)
+                if (r != null) {
+                    r.update();
                     runs.add(r);
+                }
             }
             
             if (!runs.isEmpty()) {

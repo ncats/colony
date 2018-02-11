@@ -30,10 +30,6 @@ public class ColonyImagePane extends JPanel
     public static final long FLAG_POLYGON = 1L<<5;
     public static final long FLAG_MASKS = 1L<<6;
 
-    static class Mask {
-        public ArrayList<int[]> runs = new ArrayList<>();
-    }
-
     protected long flags = FLAG_IMAGE|FLAG_POLYGON|FLAG_SEGMENT|FLAG_MASKS;
     protected BufferedImage image;
     protected ColonyAnalysis colony = new ColonyAnalysis ();
@@ -41,8 +37,9 @@ public class ColonyImagePane extends JPanel
     protected double scale = 1.;
     protected Point pt = new Point ();
     
-    protected ArrayList<Shape> masks = new ArrayList<>();
-    protected ArrayList<Shape> fills = new ArrayList<>();
+    protected ArrayList<Nucleus> nuclei = new ArrayList<>();
+    protected NucleiAnalysis.Model model;
+    IntersectionOverUnion iou;
     
     public ColonyImagePane () {
         addMouseMotionListener (this);
@@ -66,11 +63,17 @@ public class ColonyImagePane extends JPanel
 
     public void show (long flag) {
         flags |= flag;
+        if (image != null) {
+            image = createMosaic ();
+        }
         repaint ();
     }
     
     public void hide (long flag) {
         flags &=~flag;
+        if (image != null) {
+            image = createMosaic ();
+        }
         repaint ();
     }
 
@@ -93,7 +96,7 @@ public class ColonyImagePane extends JPanel
             width = 0;
             height = 0;
             image = null;
-            masks.clear();
+            nuclei.clear();
         }
         resizeAndRepaint ();
     }
@@ -115,6 +118,16 @@ public class ColonyImagePane extends JPanel
 
     public RenderedImage getImage () { return image; }
     public ColonyAnalysis getColony () { return colony; }
+    public void setThreshold (int threshold) {
+        colony.setThreshold(threshold);
+        colony.analyze();
+        if (iou != null) {
+            logger.info("=====> precision "+iou.precision(colony.getBitmap()));
+        }
+        image = createMosaic ();
+        resizeAndRepaint ();
+    }
+    public int getThreshold () { return colony.getThreshold(); }
 
     @Override
     protected void paintComponent (Graphics g) {
@@ -163,15 +176,18 @@ public class ColonyImagePane extends JPanel
 
     void drawMasks (Graphics2D g2) {
         if ((flags & FLAG_MASKS) == FLAG_MASKS) {
-            // draw fill
-            g2.setPaint(Color.green);
-            for (Shape m : fills)
-                g2.draw(m);
+            for (Nucleus n : nuclei) {
+                // draw fill
+                g2.setPaint(Color.green);
+                for (Line2D l : n.lines)
+                    g2.draw(l);            
+            }
             
-            // draw bounding polygon
-            g2.setPaint(Color.red);
-            for (Shape m : masks)
-                g2.draw(m);
+            for (Nucleus n : nuclei) {
+                // draw bounding polygon
+                g2.setPaint(Color.red);
+                g2.draw(n);
+            }
         }
     }
 
@@ -211,19 +227,28 @@ public class ColonyImagePane extends JPanel
         BufferedImage raster = colony.getImage(Raster);
         
         BufferedImage img = new BufferedImage 
-            (raster.getWidth()*3, raster.getHeight(),
+            (raster.getWidth()*3, 2*raster.getHeight(),
              BufferedImage.TYPE_INT_ARGB);
+        
         Graphics2D g2 = img.createGraphics();
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, 
                             RenderingHints.VALUE_RENDER_QUALITY);
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, 
                             RenderingHints.VALUE_ANTIALIAS_ON);
+        // first row
         g2.drawRenderedImage(raster, null);
         AffineTransform tx = AffineTransform.getTranslateInstance
             ((double)raster.getWidth(), 0.);
         g2.transform(tx);
         g2.drawRenderedImage(colony.getImage(Rescaled), null);
-        drawPolygons (g2);
+        // draw masks (if any)
+        if ((flags & FLAG_MASKS) == FLAG_MASKS) {
+            g2.setPaint(Color.green);
+            for (Nucleus n : nuclei)
+                g2.draw(n);
+            drawPolygons (g2);
+        }
+
         tx = AffineTransform.getTranslateInstance
             ((double)raster.getWidth(), 0.);
         g2.transform(tx);        
@@ -231,6 +256,41 @@ public class ColonyImagePane extends JPanel
         g2.setPaint(Color.black);
         g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
         drawPolygons (g2);
+
+        // second row
+        Grayscale grayscale = colony.getGrayscale();
+        if (grayscale.getNumChannels() > 1) {
+            Grayscale.Channel channel =
+                grayscale.getChannel(Grayscale.ChannelR.class);
+            if (channel != null) {
+                tx = AffineTransform.getTranslateInstance
+                    (-2*raster.getWidth(), (double)raster.getHeight());
+                g2.transform(tx);
+                g2.drawRenderedImage(channel.image(), null);
+                g2.setPaint(Color.red);
+                g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
+            }
+            
+            channel = grayscale.getChannel(Grayscale.ChannelG.class);
+            if (channel != null) {
+                tx = AffineTransform.getTranslateInstance
+                    ((double)raster.getWidth(), 0.);
+                g2.transform(tx);
+                g2.drawRenderedImage(channel.image(), null);
+                g2.setPaint(Color.green);
+                g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
+            }
+
+            channel = grayscale.getChannel(Grayscale.ChannelB.class);
+            if (channel != null) {
+                tx = AffineTransform.getTranslateInstance
+                    ((double)raster.getWidth(), 0.);
+                g2.transform(tx);
+                g2.drawRenderedImage(channel.image(), null);
+                g2.setPaint(Color.blue);
+                g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
+            }
+        }
         g2.dispose();
         
         return img;
@@ -312,28 +372,13 @@ public class ColonyImagePane extends JPanel
         }
     }
 
-    void masksToFills (Collection<Mask> runs) {
-        fills.clear();
-        masks.clear();
-        for (Mask m : runs) {
-            ArrayList<Point2D> pts = new ArrayList<>();
-            for (int[] r : m.runs) {
-                double x0 = (double)(r[0]-1) / height;
-                double y0 = (double)((r[0]-1) % height);
-                pts.add(new Point2D.Double(x0, y0));
-                if (r[1] > 1) {
-                    double x1 = x0, y1 = y0+(r[1]-1);
-                    fills.add(new Line2D.Double(x0, y0, x1, y1));
-                    pts.add(new Point2D.Double(x1, y1));
-                }
-                else {
-                    fills.add(new Line2D.Double(x0, y0, x0, y0));
-                }
-            }
-            
-            if (!pts.isEmpty())
-                masks.add(GeomUtil.convexHull(pts.toArray(new Point2D[0])));
-        }
+    void createNuclei (Collection<RLE.Run[]> segments) {
+        nuclei.clear();
+        for (RLE.Run[] runs : segments)
+            nuclei.add(new Nucleus (runs));
+        
+        image = createMosaic (); // regenerate the mosaic
+        repaint ();
     }
 
     public void loadMasks (String name, String file) throws Exception {
@@ -346,46 +391,31 @@ public class ColonyImagePane extends JPanel
         }
         
         logger.info("loading masks from \""+file+"\"...");
-        BufferedReader br = new BufferedReader (new FileReader (file));
-        br.readLine(); // skip header
-
-        CodecRunLength codec = new CodecRunLength (new Bitmap (width, height));
-
-        ArrayList<Mask> masks = new ArrayList<>();
-        for (String line; (line = br.readLine()) != null; ) {
-            String[] toks = line.split(",");
-            if (toks.length == 2 && toks[0].equals(name)) {
-                String[] runlen = toks[1].split("\\s+");
-                if (runlen.length % 2 == 0) {
-                    Mask mask = new Mask ();
-                    for (int i = 0; i < runlen.length; i+=2) {
-                        int index = Integer.parseInt(runlen[i]);
-                        int len = Integer.parseInt(runlen[i+1]);
-                        codec.decode(index, len);
-                        mask.runs.add(new int[]{index,len});
-                    }
-                    
-                    Collections.sort(mask.runs, new Comparator<int[]>() {
-                            public int compare (int[] a, int[] b) {
-                                return a[0] - b[0];
-                            }
-                        });
-                    masks.add(mask);
-                }
-                else {
-                    logger.warning
-                        ("Bad run length; not even number of tokens:\n"
-                         +toks[1]);
-                }
-            }
-        }
-        br.close();
-        masksToFills (masks);
+        java.util.List<RLE.Run[]> masks = NucleiAnalysis.parseMasks
+            (name, height, new FileInputStream (file));
 
         //DEBUG
-        BufferedImage bitmap = codec.getBitmap().createBufferedImage();
-        ImageIO.write(bitmap, "png",
-                      new FileOutputStream (name+"_mask.png"));
+        { File mask = new File ("masks");
+            mask.mkdirs();
+            RLE codec = new RLE (new Bitmap (width, height));
+            for (RLE.Run[] r : masks) 
+                codec.decode(r);
+            
+            iou = new IntersectionOverUnion (width, height, masks);
+            logger.info("=====> precision "+iou.precision(codec.getBitmap())
+                        +" threshold "+iou.precision(colony.getBitmap()));
+            /*
+            BufferedImage bitmap = codec.getBitmap().createBufferedImage();
+            ImageIO.write(bitmap, "png",
+                          new FileOutputStream (new File (mask, name+".png")));
+            */
+        }        
+        
+        createNuclei (masks);
+        
+        //DEBUG
+        //NucleiAnalysis na = new NucleiAnalysis (colony.getRaster(), masks);
+        //model = na.threshold();
     }
 
     public String load (File imfile, String mask) throws IOException {
@@ -407,16 +437,16 @@ public class ColonyImagePane extends JPanel
             ColorModel model = image.getColorModel();
             logger.info(imfile.getName()+": width="+image.getWidth()+" height="
                         +image.getHeight()+" components="
-                        +model.getNumComponents()
+                       +model.getNumComponents()
                         +" model="+model.getClass());
             String name = imfile.getName();
             int pos = name.lastIndexOf('.');
             if (pos > 0)
                 name = name.substring(0, pos);
-            
+
             setRaster (image.getData());
             if (mask != null)
-                loadMasks (name, mask);
+                loadMasks(name, mask);
             
             title = imfile.getName()+": "
                 +image.getWidth()+"x"+image.getHeight();
