@@ -27,27 +27,29 @@ public class IntersectionOverUnion {
         0.95
     };
     
-    final List<Shape> segments;
+    final List<Shape> nuclei;
     final Bitmap truth;
     
     public IntersectionOverUnion (int width, int height,
                                   Collection<RLE.Run[]> runs) {
         truth = new Bitmap (width, height);
         RLE rle = new RLE (truth);
-        segments = new ArrayList<>();
+        nuclei = new ArrayList<>();
         for (RLE.Run[] r : runs) {
             rle.decode(r);
-            Nucleus n = new Nucleus (r);
-            segments.add(n);
-        }        
+            nuclei.add(new Nucleus (r));
+        }
     }
 
     public IntersectionOverUnion (Bitmap truth) {
         this.truth = truth;
-        segments = truth.polyConnectedComponents();
+        nuclei = truth.polyConnectedComponents();
     }
 
     public Bitmap getBitmap () { return truth; }
+    public Collection<RLE.Run[]> getMasks () {
+        return RLE.encode(nuclei, truth);
+    }
 
     public double precision (Bitmap target) {
         List<Shape> cc = target.polyConnectedComponents();
@@ -68,14 +70,14 @@ public class IntersectionOverUnion {
         int FP = 0, TP = 0, FN = 0;
         Set<Shape> mapped = new HashSet<>();
         
-        for (Shape s : segments) {
-            Rectangle rs = s.getBounds();
+        for (Shape n : nuclei) {
+            Rectangle rs = n.getBounds();
             
             Shape matched = null;
             double maxiou = 0.;
             for (Shape c : cc) {
                 if (!mapped.contains(c) && // force a one-to-one mapping?
-                    s.intersects(c.getBounds2D())) {
+                    n.intersects(c.getBounds2D())) {
                     Rectangle rc = c.getBounds();
                     int x0 = Math.min(rs.x, rc.x);
                     int x1 = x0 + Math.max(rs.width, rc.width);

@@ -13,6 +13,7 @@ import javax.imageio.*;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 import static tripod.colony.ColonyAnalysis.Type.*;
+import static tripod.colony.NucleiSegmentation.*;
 
 public class ColonyImagePane extends JPanel
     implements MouseMotionListener, MouseListener {
@@ -21,6 +22,7 @@ public class ColonyImagePane extends JPanel
 
     static final Color FILL_COLOR = new Color (0x9e, 0xe6, 0xcd, 120);
     static final int PAD_X = 5; // padding on each side
+    static final boolean RGB_COMP = false; // show RGB component
 
     public static final long FLAG_IMAGE = 1L<<0;
     public static final long FLAG_GRAY = 1L<<1;
@@ -39,6 +41,7 @@ public class ColonyImagePane extends JPanel
     
     protected ArrayList<Nucleus> nuclei = new ArrayList<>();
     protected NucleiAnalysis.Model model;
+    protected Segment segment;
     IntersectionOverUnion iou;
     
     public ColonyImagePane () {
@@ -82,6 +85,15 @@ public class ColonyImagePane extends JPanel
         resizeAndRepaint ();
     }
 
+    public void setSegment (Segment segment) {
+        this.segment = segment;
+        if (image != null) {
+            image = createMosaic ();
+            repaint ();
+        }
+    }
+    
+    public Raster getRaster () { return colony.getRaster(); }
     public void setRaster (Raster raster) {
         if (raster != null) {
             width = raster.getWidth();
@@ -170,7 +182,8 @@ public class ColonyImagePane extends JPanel
             // convert to image coordinate
             int p = (int)(x/scale + 0.5);
             int q = (int)(y/scale + 0.5);
-            g2.drawString("("+(p%width)+","+q+")", x+dx, y+dy);
+            int z = (p%width) * height + q+1;
+            g2.drawString("("+z+":"+(p%width)+","+q+")", x+dx, y+dy);
         }
     }
 
@@ -188,6 +201,14 @@ public class ColonyImagePane extends JPanel
                 g2.setPaint(Color.red);
                 g2.draw(n);
             }
+        }        
+    }
+
+    void drawSegment (Graphics2D g2, Segment seg) {
+        if (seg != null) {
+            g2.draw(seg.region);
+            for (Segment child : seg.children)
+                drawSegment (g2, child);
         }
     }
 
@@ -225,9 +246,10 @@ public class ColonyImagePane extends JPanel
 
     BufferedImage createMosaic () {
         BufferedImage raster = colony.getImage(Raster);
-        
+
+        int nrows = RGB_COMP ? 2 : 1;
         BufferedImage img = new BufferedImage 
-            (raster.getWidth()*3, 2*raster.getHeight(),
+            (raster.getWidth()*3, nrows*raster.getHeight(),
              BufferedImage.TYPE_INT_ARGB);
         
         Graphics2D g2 = img.createGraphics();
@@ -255,40 +277,53 @@ public class ColonyImagePane extends JPanel
         g2.drawRenderedImage(colony.getImage(Threshold), null);
         g2.setPaint(Color.black);
         g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
-        drawPolygons (g2);
+        //drawPolygons (g2);
+        if (segment != null) {
+            g2.setPaint(Color.red);
+            //drawSegment (g2, segment);
+            tx = AffineTransform.getTranslateInstance
+                (segment.getX(), segment.getY());
+            g2.transform(tx);
+            g2.fill(GeomUtil.toPolygon(segment.dominantPoints()));
+        }
 
         // second row
-        Grayscale grayscale = colony.getGrayscale();
-        if (grayscale.getNumChannels() > 1) {
-            Grayscale.Channel channel =
-                grayscale.getChannel(Grayscale.ChannelR.class);
-            if (channel != null) {
-                tx = AffineTransform.getTranslateInstance
-                    (-2*raster.getWidth(), (double)raster.getHeight());
-                g2.transform(tx);
-                g2.drawRenderedImage(channel.image(), null);
-                g2.setPaint(Color.red);
-                g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
-            }
-            
-            channel = grayscale.getChannel(Grayscale.ChannelG.class);
-            if (channel != null) {
-                tx = AffineTransform.getTranslateInstance
-                    ((double)raster.getWidth(), 0.);
-                g2.transform(tx);
-                g2.drawRenderedImage(channel.image(), null);
-                g2.setPaint(Color.green);
-                g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
-            }
-
-            channel = grayscale.getChannel(Grayscale.ChannelB.class);
-            if (channel != null) {
-                tx = AffineTransform.getTranslateInstance
-                    ((double)raster.getWidth(), 0.);
-                g2.transform(tx);
-                g2.drawRenderedImage(channel.image(), null);
-                g2.setPaint(Color.blue);
-                g2.drawRect(0, 0, raster.getWidth()-1, raster.getHeight()-1);
+        if (nrows > 1) {
+            Grayscale grayscale = colony.getGrayscale();
+            if (grayscale.getNumChannels() > 1) {
+                Grayscale.Channel channel =
+                    grayscale.getChannel(Grayscale.ChannelR.class);
+                if (channel != null) {
+                    tx = AffineTransform.getTranslateInstance
+                        (-2*raster.getWidth(), (double)raster.getHeight());
+                    g2.transform(tx);
+                    g2.drawRenderedImage(channel.image(), null);
+                    g2.setPaint(Color.red);
+                    g2.drawRect(0, 0, raster.getWidth()-1,
+                                raster.getHeight()-1);
+                }
+                
+                channel = grayscale.getChannel(Grayscale.ChannelG.class);
+                if (channel != null) {
+                    tx = AffineTransform.getTranslateInstance
+                        ((double)raster.getWidth(), 0.);
+                    g2.transform(tx);
+                    g2.drawRenderedImage(channel.image(), null);
+                    g2.setPaint(Color.green);
+                    g2.drawRect(0, 0, raster.getWidth()-1,
+                                raster.getHeight()-1);
+                }
+                
+                channel = grayscale.getChannel(Grayscale.ChannelB.class);
+                if (channel != null) {
+                    tx = AffineTransform.getTranslateInstance
+                        ((double)raster.getWidth(), 0.);
+                    g2.transform(tx);
+                    g2.drawRenderedImage(channel.image(), null);
+                    g2.setPaint(Color.blue);
+                    g2.drawRect(0, 0, raster.getWidth()-1,
+                                raster.getHeight()-1);
+                }
             }
         }
         g2.dispose();
@@ -395,6 +430,7 @@ public class ColonyImagePane extends JPanel
             (name, height, new FileInputStream (file));
 
         //DEBUG
+        if (false)
         { File mask = new File ("masks");
             mask.mkdirs();
             RLE codec = new RLE (new Bitmap (width, height));

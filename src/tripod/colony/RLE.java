@@ -6,7 +6,9 @@ import java.util.logging.*;
 import java.awt.image.*;
 import java.awt.Rectangle;
 import java.awt.Shape;
-import java.awt.geom.Line2D;
+import java.awt.geom.*;
+import java.io.OutputStream;
+import java.io.PrintStream;
 
 
 /* encode run-length format based on kaggle data science bowl 2018:
@@ -71,17 +73,18 @@ public class RLE {
     }
 
     public Bitmap getBitmap () { return bitmap; }
-    
-    public List<Run[]> encode () {
+
+    public static List<Run[]> encode
+        (Collection<Shape> components, Bitmap bitmap) {
         List<Run[]> runlens = new ArrayList<>();
-        for (Shape s : bitmap.connectedComponents()) {
+        for (Shape s : components) {
             Rectangle rect = s.getBounds();
             //logger.info("** component "+rect+ " **");
             List<Run> runs = new ArrayList<>();
             for (int x0 = rect.x, x1 = x0+rect.width; x0 < x1; ++x0) {
                 Run r = null;
                 for (int y0 = rect.y, y1 = y0+rect.height; y0 < y1; ++y0) {
-                    if (bitmap.isOn(x0, y0)) {
+                    if (bitmap.isOn(x0, y0) && s.contains(x0, y0)) {
                         if (r != null)
                             ++r.len;
                         else
@@ -100,12 +103,58 @@ public class RLE {
                     runs.add(r);
                 }
             }
-            
+
             if (!runs.isEmpty()) {
                 runlens.add(runs.toArray(new Run[0]));
             }
         }
         return runlens;
+    }
+
+    public List<Run[]> encode (Collection<Shape> components) {
+        return encode (components, bitmap);
+    }
+    
+    public List<Run[]> encode () {
+        List<Shape> merged = new ArrayList<>();
+        for (Shape p : bitmap.polyConnectedComponents()) {
+            Area a = new Area (p);
+            Rectangle r = p.getBounds();
+            List<Shape> remove = new ArrayList<>();
+            for (Shape s : merged) {
+                Area b = new Area (s);
+                if (b.intersects(r)
+                    || b.contains(r) || a.contains(s.getBounds())) {
+                    a.add(b);
+                    remove.add(s);
+                }
+            }
+            merged.add(a);
+            for (Shape s : remove)
+                merged.remove(s);
+        }
+        
+        return encode (merged, bitmap);
+    }
+
+    public void encode (String name, OutputStream os) {
+        encode (name, os, 5);
+    }
+    
+    public void encode (String name, OutputStream os, int minsize) {
+        PrintStream ps = new PrintStream (os);
+        for (Run[] runs : encode ()) {
+            int n = 0;
+            for (int i = 0; i < runs.length; ++i)
+                n += runs[i].len;
+
+            if (n > minsize) {
+                ps.print(name+","+runs[0]);
+                for (int i = 1; i < runs.length; ++i)
+                    ps.print(" "+runs[i]);
+                ps.println();
+            }
+        }
     }
 
     // call this as often as needed; this assumes bitmap has been sized
@@ -115,9 +164,19 @@ public class RLE {
         int y = (index - 1) % bitmap.height();
         if (len > 1) {
             int y1 = y + (len-1);
-            while (y < y1)
-                bitmap.set(x, y++, true);
+            while (y < y1) {
+                /*if (bitmap.isOn(x, y)) {
+                    logger.warning("Pixel ("+x+","+y+") is already encoded!");
+                }
+                else*/
+                    bitmap.set(x, y++, true);
+            }
         }
+        /*
+        else if (bitmap.isOn(x, y)) {
+            logger.warning("Pixel ("+x+","+y+") is already encoded!");
+            }
+        */
         else
             bitmap.set(x, y, true);
     }

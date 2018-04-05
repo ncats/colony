@@ -14,10 +14,12 @@ import javax.swing.plaf.UIResource;
 import javax.swing.tree.*;
 import javax.swing.table.*;
 import javax.swing.filechooser.*;
+import javax.swing.border.*;
 
 import com.jgoodies.looks.plastic.Plastic3DLookAndFeel;
 import com.jidesoft.swing.JideTabbedPane;
 
+import static tripod.colony.NucleiSegmentation.*;
 import static tripod.colony.ColonyImagePane.*;
 
 public class NucleiViewer extends JFrame implements ActionListener {
@@ -25,6 +27,7 @@ public class NucleiViewer extends JFrame implements ActionListener {
     static final String LOAD_IMAGES = "Load images";
     static final String SAVE_IMAGE = "Save image";
     static final String SHOW_MASKS = "Show masks";
+    static final String SHOW_SEGMENTS = "Show segments";
     static final String MASK_FILE = "Load masks";
 
     static class FileNode extends DefaultMutableTreeNode {
@@ -49,12 +52,16 @@ public class NucleiViewer extends JFrame implements ActionListener {
     final JFileChooser fileChooser;
     final JLabel maskLabel;
     final JTree fileTree;
+    final JTree segTree;
     final JSpinner thresholdSpinner;
+    final JCheckBox segmentCb;
     
     File maskFile;
     File imageFile;
     JButton saveBtn;
-
+    NucleiSegmentation nuseg;
+    Segment segment;
+    
     public NucleiViewer () {
         JToolBar toolbar = new JToolBar ();
 
@@ -101,6 +108,13 @@ public class NucleiViewer extends JFrame implements ActionListener {
         toolbar.add(thresholdSpinner);
         toolbar.addSeparator();
         
+        segmentCb = new JCheckBox (SHOW_SEGMENTS);
+        segmentCb.setToolTipText("Toggle segments");
+        segmentCb.setSelected(true);
+        segmentCb.addActionListener(this);
+        toolbar.add(segmentCb);
+        toolbar.addSeparator();
+
         JCheckBox cb = new JCheckBox (SHOW_MASKS);
         cb.setToolTipText("Toggle mask/ground truth overlay");
         cb.setSelected(true);
@@ -112,7 +126,6 @@ public class NucleiViewer extends JFrame implements ActionListener {
         mask.addActionListener(this);
         toolbar.add(mask);
         toolbar.add(maskLabel = new JLabel ());
-
         
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         zpane = new ColonyImagePane ();
@@ -130,7 +143,7 @@ public class NucleiViewer extends JFrame implements ActionListener {
                         loadFile (file);
                     }
                     else {
-                        expandDescendants (node);
+                        expandDescendants (fileTree, node);
                     }
                 }
             });
@@ -138,8 +151,22 @@ public class NucleiViewer extends JFrame implements ActionListener {
         
         JSplitPane hsplit = new JSplitPane (JSplitPane.HORIZONTAL_SPLIT);
         hsplit.setLeftComponent(new JScrollPane (fileTree));
-        hsplit.setRightComponent(new JScrollPane (zpane));
+        segTree = new JTree (new DefaultTreeModel (null));
+        segTree.setExpandsSelectedPaths(true);
+        segTree.addTreeSelectionListener(new TreeSelectionListener () {
+                public void valueChanged (TreeSelectionEvent e) {
+                    Segment seg = (Segment) e.getPath().getLastPathComponent();
+                    showSegment (seg);
+                }
+            });
+        hsplit.setBorder(new EmptyBorder (0, 1, 0, 0));
 
+        JSplitPane hs = new JSplitPane (JSplitPane.HORIZONTAL_SPLIT);
+        hs.setBorder(new EmptyBorder (0, 0, 0, 1));
+        hs.setLeftComponent(new JScrollPane (segTree));
+        hs.setRightComponent(new JScrollPane (zpane));
+        hsplit.setRightComponent(hs);
+        
         JPanel pane = new JPanel (new BorderLayout (0, 0));
         pane.add(toolbar, BorderLayout.NORTH);
         pane.add(hsplit);        
@@ -150,18 +177,49 @@ public class NucleiViewer extends JFrame implements ActionListener {
         setVisible(true);
     }
 
-    void expandDescendants (MutableTreeNode node) {
+    void showSegment (Segment seg) {
+        seg.print(System.err);
+        if (segmentCb.isSelected())
+            zpane.setSegment(seg);
+
+        try {
+            String name = "seg."+seg.depth+"."+seg.threshold();        
+            seg.bitmap.writetif(name+".tif");
+            seg.bitmap.thin().write("png", new File (name+"thin.png"));
+        }
+        catch (IOException ex) {
+            ex.printStackTrace();
+        }
+        
+        thresholdSpinner.setValue(seg.threshold());
+        expandDescendants (segTree, seg);
+        if (seg.isLeaf()) {
+            try {
+                nuseg.linearFit(seg);
+            }
+            catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        }
+        else {
+            logger.info("++ segment "+seg);
+        }
+        segment = seg;
+    }
+    
+    void expandDescendants (JTree tree, TreeNode node) {
         LinkedList<TreeNode> path = new LinkedList<>();
         for (TreeNode p = node.getParent(); p != null; p = p.getParent())
             path.add(p);
-        expandDescendants (path, node);
+        expandDescendants (tree, path, node);
     }
 
-    void expandDescendants (LinkedList<TreeNode> path, TreeNode node) {
+    void expandDescendants (JTree tree,
+                            LinkedList<TreeNode> path, TreeNode node) {
         path.push(node);
         for (Enumeration en = node.children(); en.hasMoreElements();) {
             TreeNode n = (TreeNode) en.nextElement();
-            expandDescendants (path, n);
+            expandDescendants (tree, path, n);
         }
         path.pop();
 
@@ -169,7 +227,7 @@ public class NucleiViewer extends JFrame implements ActionListener {
             ArrayList<TreeNode> p = new ArrayList<>(path);
             Collections.reverse(p);
             //logger.info("expanding path..."+p);
-            fileTree.expandPath(new TreePath (p.toArray(new TreeNode[0])));
+            tree.expandPath(new TreePath (p.toArray(new TreeNode[0])));
         }
     }
 
@@ -187,6 +245,12 @@ public class NucleiViewer extends JFrame implements ActionListener {
             saveBtn.setEnabled(true);
             ((SpinnerNumberModel)thresholdSpinner.getModel())
                 .setValue(zpane.getThreshold());
+
+            nuseg = new NucleiSegmentation (zpane.getRaster());
+            segTree.setModel(nuseg.model);
+
+            // clear out any previous segment selected
+            zpane.setSegment(null);
             
             /*
             RLE crl = new RLE (zpane.getColony().getBitmap());
@@ -248,6 +312,11 @@ public class NucleiViewer extends JFrame implements ActionListener {
                         zpane.hide(FLAG_MASKS);
                 }
                 break;
+
+            case SHOW_SEGMENTS:
+                { JCheckBox cb = (JCheckBox)source;
+                    zpane.setSegment(cb.isSelected() ? segment: null);
+                }
             }
         }
     }

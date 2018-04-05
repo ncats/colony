@@ -94,6 +94,10 @@ public class Util {
     }
 
     static public Bitmap threshold (Raster raster, int threshold) {
+        return threshold (raster, null, threshold);
+    }
+    
+    static public Bitmap threshold (Raster raster, Shape shape, int threshold) {
         // binary thresholding
         int low = 0;
         for (int i = 0; i < raster.getWidth(); ++i) 
@@ -103,18 +107,25 @@ public class Util {
                     ++low;
             }
         int majority = raster.getWidth()*raster.getHeight()/3;
-        return threshold (raster, threshold, low < majority);
+        return threshold (raster, shape, threshold, low < majority);
     }
-
-    static public Bitmap threshold (Raster raster, 
+ 
+    static public Bitmap threshold (Raster raster,
+                                    int threshold, boolean inverted) {
+        return threshold (raster, null, threshold, inverted);
+    }
+   
+    static public Bitmap threshold (Raster raster, Shape shape,
                                     int threshold, boolean inverted) {
         Bitmap bitmap = new Bitmap (raster.getWidth(), raster.getHeight()); 
 
         // binary thresholding
         for (int i = 0; i < raster.getWidth(); ++i) 
             for (int j = 0; j < raster.getHeight(); ++j) {
-                int p = raster.getSample(i, j, 0);
-                bitmap.set(i, j, inverted ? p < threshold : p > threshold);
+                if (shape == null || shape.contains(i, j)) {
+                    int p = raster.getSample(i, j, 0);
+                    bitmap.set(i, j, inverted ? p < threshold : p > threshold);
+                }
             }
         return bitmap;
     }

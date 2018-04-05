@@ -20,28 +20,15 @@ public class NucleiAnalysis {
     private static final Logger logger = Logger.getLogger
         (NucleiAnalysis.class.getName());
 
-    static class Layer {
-        public int lo, hi;
-        public Bitmap bitmap;
-        public double precision;
-
-        Layer (double precision, int lo, int hi, Bitmap bitmap) {
-            this.precision = precision;
-            this.lo = lo;
-            this.hi = hi;
-            this.bitmap = (Bitmap) bitmap.clone();
-        }
-    }
-
     public interface Model {
         Channel channel ();
-        Bitmap bitmap ();
-        Collection<Run[]> masks ();
+        Bitmap apply (Raster raster);
         double precision ();
         double similarity (Channel channel);
     }
 
     static public abstract class AbstractModel implements Model, Serializable {
+        private static final long serialVersionUID = 0x12l;        
         public Channel channel;
         public double precision;
         
@@ -49,30 +36,8 @@ public class NucleiAnalysis {
             this.channel = channel;
             this.precision = precision;
         }
-    }
-    
-    static public class ThresholdModel implements Model, Serializable {
-        private static final long serialVersionUID = 0x123l;
 
-        public Channel channel;
-        public double precision;
-        public int threshold;
-
-        ThresholdModel (Channel channel, double precision, int threshold) {
-            this.channel = channel;
-            this.precision = precision;
-            this.threshold = threshold;
-        }
-        
-        public Bitmap bitmap () {
-            return Util.threshold(channel.raster(), threshold);
-        }
-
-        public Collection<Run[]> masks () {
-            RLE rle = new RLE (bitmap ());
-            return rle.encode();
-        }
-
+        public abstract Bitmap apply (Raster raster);
         public double precision () { return precision; }
         public Channel channel () { return channel; }
         public double similarity (Channel channel) {
@@ -88,16 +53,36 @@ public class NucleiAnalysis {
         public String toString () {
             return getClass().getSimpleName()+"{channel="
                 +channel.getClass().getSimpleName()+",precision="
+                +String.format("%1$.5f", precision)+"}";
+        }
+    }
+    
+    static public class ThresholdModel extends AbstractModel {
+        private static final long serialVersionUID = 0x123l;
+        public int threshold;
+        public double[] tmf; // threshold mass function
+
+        ThresholdModel (Channel channel, double precision, int threshold) {
+            super (channel, precision);
+            this.threshold = threshold;
+        }
+
+        @Override
+        public Bitmap apply (Raster raster) {
+            return Util.threshold(raster, threshold);
+        }
+        
+        public String toString () {
+            return getClass().getSimpleName()+"{channel="
+                +channel.getClass().getSimpleName()+",precision="
                 +String.format("%1$.5f", precision)
                 +",threshold="+threshold+"}";
         }
     }
 
+
     final Grayscale grayscale;
     final IntersectionOverUnion iou;
-    
-    int rlow, rhigh, pmin, pmax; 
-    Nucleus[] nuclei;
     
     /**
      * for a given raster image and annotated nuclei, we perform the following
@@ -119,67 +104,12 @@ public class NucleiAnalysis {
             (raster.getWidth(), raster.getHeight(), masks);
 
         grayscale = new Grayscale (raster);
-        //initNuclei (masks, grayscale.getChannel());
     }
 
-    void initNuclei (Collection<Run[]> masks, Channel raster) {
-        nuclei = new Nucleus[masks.size()];
-        
-        rlow = pmin = Integer.MAX_VALUE;
-        rhigh = pmax = 0;
-        
-        int i = 0;
-        for (Run[] r : masks) {
-            int min = Integer.MAX_VALUE, max = 0;
-            for (int j = 0; j < r.length; ++j) {
-                int x = r[j].x, y = r[j].y0, y1 = r[j].y1;
-                while (y < y1) {
-                    int p = raster.get(x, y++);
-                    if (p < min) min = p;
-                    if (p > max) max = p;
-                }
-            }
-            Nucleus n = new Nucleus (r);
-            nuclei[i++] = n;
-            /*
-            logger.info("## nucleus "+i+": "
-                        +n.getBounds()+" min="+min+" max="+max+" area="+n.area);
-                        I*/
-            
-            if (min < pmin) pmin = min;
-            if (max > pmax) pmax = max;
-            int range = max - min;
-            if (range < rlow) rlow = range;
-            if (range > rhigh) rhigh = range;
-        }
-        logger.info("## "+masks.size()+" nuclei: range "+rlow+" to "+rhigh);
-    }
-    
-    double eval (Bitmap b, int lo, int hi, Channel raster) {
-        b.clear();
-        for (int x = 0; x < b.width(); ++x) {
-            for (int y = 0; y < b.height(); ++y) {
-                int p = raster.get(x, y);
-                //b.set(x, y, p < (lo+(hi-lo)/2));
-                b.set(x, y, p <= hi && p >= lo);
-            }
-        }
-        
-        return iou.precision(b);
-    }
 
-    static Layer findOverlap (List<Layer> layers, int lo, int hi) {
-        for (Layer l : layers) {
-            if ((lo >= l.lo && lo <= l.hi)
-                || (hi >= l.lo && hi <= l.hi)
-                || (l.lo >= lo && l.lo <= hi))
-                return l;
-        }
-        return null;
-    }
-
-    public Model threshold () {
+    public ThresholdModel threshold () {
         ThresholdModel model = null;
+        double[][] tmf = new double[grayscale.getNumChannels()][256];
         for (int i = 0; i < grayscale.getNumChannels(); ++i) {
             Channel channel = grayscale.getChannel(i);
             /*
@@ -187,18 +117,22 @@ public class NucleiAnalysis {
                         +" ["+channel.pmin+","+channel.pmax+"] ===========");
             */
             Raster raster = channel.raster();
+            double total = raster.getWidth()*raster.getHeight();
             for (int t = channel.pmin+1; t < channel.pmax; ++t) {
                 Bitmap b = Util.threshold(raster, t);
                 double p = iou.precision(b);
                 if (model == null) {
                     model = new ThresholdModel (channel, p, t);
+                    model.tmf = tmf[i];
                 }
                 else if (p > model.precision) {
                     model.channel = channel;
                     model.precision = p;
                     model.threshold = t;
+                    model.tmf = tmf[i];
                     //logger.info("++ threshold = "+t+" precision = "+p);
                 }
+                tmf[i][t] = b.area()/total;
             }
 
             if (false) {
@@ -218,62 +152,11 @@ public class NucleiAnalysis {
                         .getClass().getSimpleName()
                         +" precision="+model.precision+" threshold="
                         +model.threshold);
-            if (false) {
-                try {
-                    model.channel.write(new File ("best-grayscale.png"));
-                    model.bitmap().write(new File ("best-masks.png"));
-                }
-                catch (IOException ex) {
-                    logger.log(Level.SEVERE, "Can't export bitmap!", ex);
-                }
-            }
         }
         
         return model;
     }
     
-    public void window () {
-        Bitmap b = new Bitmap (grayscale.width(), grayscale.height());
-
-        Channel channel = grayscale.getChannel();
-        // running a window of size range over the grayscale histogram
-        List<Layer> layers = new ArrayList<>();
-        for (int range = rlow; range <= rhigh; ++range) {
-            for (int i = pmin; i < pmax; ++i) {
-                int j = Math.min(pmax, i+range);
-                double p = eval (b, i, j, channel);
-                Layer l = findOverlap (layers, i, j);
-                if (l == null) {
-                    layers.add(new Layer (p, i, j, b));
-                    logger.info("new window ["+i+","+j+"] "+p);
-                }
-                else if (l.precision < p) {
-                    logger.info("["+i+","+j+"] => window ["+l.lo+","+l.hi+"] "
-                                +l.precision+" => "+p);
-                    l.precision = p;
-                    l.bitmap = (Bitmap) b.clone();
-                    l.lo = Math.min(l.lo, i);
-                    l.hi = Math.max(l.hi, j);
-                }
-            }
-        }
-        
-        logger.info("===> best "+layers.size()+" layer(s) found!");
-        int i = 1;
-        for (Layer l : layers) {
-            logger.info(".. layer ["+l.lo+","+l.hi+"] precision="+l.precision);
-            try {
-                ImageIO.write(l.bitmap.createBufferedImage(),
-                              "png", new FileOutputStream
-                              ("nuclei-"+i+".png"));
-                ++i;
-            }
-            catch (IOException ex) {
-                ex.printStackTrace();
-            }
-        }
-    }
-
     public static List<Run[]> parseMasks
         (String name, int size, InputStream is) throws IOException {
         BufferedReader br = new BufferedReader (new InputStreamReader (is));
@@ -305,6 +188,33 @@ public class NucleiAnalysis {
         return masks;
     }
 
+    static public class TMF {
+        public static void main (String[] argv) throws Exception {
+            if (argv.length == 0) {
+                System.err.println("Usage: "+NucleiAnalysis.TMF.class.getName()
+                                   +" IMAGE");
+                System.exit(1);
+            }
+            RenderedImage image = ImageIO.read(new File (argv[0]));
+            Grayscale gs = new Grayscale (image.getData());
+            Channel channel = gs.getChannel();
+            double total = image.getWidth()*image.getHeight();
+            for (int t = channel.pmin+1; t < channel.pmax; ++t) {
+                Bitmap b = Util.threshold(channel.raster(), t);
+                //System.out.println(t+" "+(b.area()/total));
+                List<Shape> cc = b.connectedComponents();
+                //System.out.println(t+" "+cc.size());
+                double avgcc = 0;
+                for (Shape s : cc) {
+                    java.awt.Rectangle r = s.getBounds();
+                    avgcc += Math.sqrt(r.width*r.width + r.height * r.height);
+                }
+                avgcc /= cc.size();
+                System.out.println(t+" "+avgcc+" "+cc.size());
+            }
+        }
+    }
+    
     static public class Train {
         public static void main (String[] argv) throws Exception {
             if (argv.length < 3) {
@@ -344,44 +254,44 @@ public class NucleiAnalysis {
     }
 
     static class Candidate implements Comparable<Candidate> {
-        public final double similarity;
+        public final Channel channel;
         public final String name;
         public final Model model;
+        public final double similarity;
+        public final double score;
 
-        Candidate (double similarity, String name, Model model) {
-            this.similarity = similarity;
+        Candidate (Channel channel, String name, Model model) {
+            this.channel = channel;
             this.name = name;
             this.model = model;
+            similarity = model.similarity(channel);
+            score = similarity * model.precision();
         }
 
         public int compareTo (Candidate c) {
-            double x = score ();
-            double y = c.score();
+            double x = similarity;//score;
+            double y = c.similarity;//c.score;
             if (y > x) return 1;
             if (y < x) return -1;
             return name.compareTo(c.name);
-        }
-
-        public double score () {
-            return similarity * model.precision();
         }
     }
 
     static public class Predict {
         File dir;
         
-        Predict (String dir) {
+        public Predict (String dir) {
             this (new File (dir));
         }
              
-        Predict (File dir) {
+        public Predict (File dir) {
             if (!dir.isDirectory())
                 throw new IllegalArgumentException
                     (dir.getName()+" is not a directory!");
             this.dir = dir;
         }
 
-        void predict (Raster raster) {
+        List<Candidate> predict (Raster raster) {
             Grayscale grayscale = new Grayscale (raster);
             List<Candidate> candidates = new ArrayList<>();
             for (int i = 0; i < grayscale.getNumChannels(); ++i) {
@@ -390,13 +300,7 @@ public class NucleiAnalysis {
             }
 
             Collections.sort(candidates);
-            for (Candidate c : candidates) {
-                System.out.println(c.name+": score="
-                                   +String.format("%1$.5f", c.score())
-                                   +" sim="
-                                   +String.format("%1$.5f", c.similarity)
-                                   +" "+c.model);
-            }
+            return candidates;
         }
 
         void predict (List<Candidate> candidates, Channel channel) {
@@ -406,9 +310,8 @@ public class NucleiAnalysis {
                         (new FileInputStream (f));
                     Model model = (Model)ois.readObject();
                     if (model.channel().getClass().equals(channel.getClass())) {
-                        double sim = model.similarity(channel);
                         candidates.add(new Candidate
-                                       (sim, f.getName().substring(0, 5),
+                                       (channel, f.getName().substring(0, 5),
                                         model));
                     }
                 }
@@ -416,6 +319,64 @@ public class NucleiAnalysis {
                     logger.log(Level.SEVERE, f.getName()
                                +": "+ex.getMessage(), ex);
                 }
+            }
+        }
+
+        public void predict (File input, OutputStream out) throws Exception {
+            String name = input.getName();
+            int pos = name.lastIndexOf('.');
+            if (pos > 0)
+                name = name.substring(0, pos);
+                
+            //logger.info(">>>>>>> "+name);
+            
+            RenderedImage image = ImageIO.read(input);
+            List<Candidate> candidates = predict (image.getData());
+            
+            int N = Integer.getInteger("candidate-size", 5);
+            for (int i = 0; i < N; ++i) {
+                Candidate c = candidates.get(i);
+                /*
+                logger.info(c.name+": score="
+                            +String.format("%1$.5f", c.score)
+                            +" sim="+String.format("%1$.5f", c.similarity)
+                            +" "+c.model);
+                */
+            }
+
+            Candidate cand = candidates.get(0); // most similar
+            Bitmap mask = null;
+            if (cand.similarity < 0.8) { // can't trust this
+                double t = 0.;
+                logger.info(">>>>>>> "+input.getName());                
+                for (int i = 0; i < N; ++i) {
+                    Candidate c = candidates.get(i);
+                    logger.info(c.name+": score="
+                                +String.format("%1$.5f", c.score)
+                                +" sim="+String.format("%1$.5f", c.similarity)
+                                +" "+c.model);
+                    ThresholdModel tm = (ThresholdModel)c.model;
+                    t += tm.threshold;
+                }
+                t /= N;
+                logger.info(">> threshold = "+t);
+            }
+            else {
+                mask = cand.model.apply(image.getData());
+                //logger.info(">> threshold = "+((ThresholdModel)cand.model).threshold);
+            }
+
+            if (mask != null) {
+                try {
+                    mask.write(new File (name.substring(0, 5)+".png"));
+                }
+                catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+                new RLE (mask).encode(name, out);
+            }
+            else {
+                new PrintStream(out).println(name+",");
             }
         }
         
@@ -428,12 +389,19 @@ public class NucleiAnalysis {
             }
 
             Predict pred = new Predict (argv[0]);
+            FileOutputStream fos = new FileOutputStream ("predictions.csv");
+            new PrintStream(fos).println("ImageId,EncodedPixels");
             for (int i = 1; i < argv.length; ++i) {
                 File file = new File (argv[i]);
-                System.out.println(">>>>>>> "+file.getName());
-                RenderedImage image = ImageIO.read(file);
-                pred.predict(image.getData());
+                if (file.isDirectory()) {
+                    for (File f : file.listFiles())
+                        pred.predict(f, fos);
+                }
+                else {
+                    pred.predict(file, fos);
+                }
             }
+            fos.close();
         }
     }
 

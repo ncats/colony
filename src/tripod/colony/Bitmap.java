@@ -249,8 +249,6 @@ public class Bitmap implements Serializable, TIFFTags {
             }
         }
 
-        ;
-
         public Point2D[] dominantPoints (double threshold) {
             // break points are candiates for dominant points
             List<AEV> breaks = new ArrayList<AEV> ();
@@ -462,6 +460,13 @@ public class Bitmap implements Serializable, TIFFTags {
     public void clear () {
         for (int i = 0; i < data.length; ++i)
             data[i] = 0;
+    }
+
+    public long area () {
+        long area = 0l;
+        for (int i = 0; i < data.length; ++i)
+            area += Integer.bitCount(data[i] & 0xff);
+        return area;
     }
     
     public int[] horizontalHistogram () {
@@ -769,16 +774,16 @@ public class Bitmap implements Serializable, TIFFTags {
             return null;
         }
 
-        Bitmap dst = new Bitmap (r.width + 1, r.height + 1);
+        Bitmap dst = new Bitmap (r.width, r.height);
         int x1 = Math.min (width, r.x + r.width);
         int y1 = Math.min (height, r.y + r.height);
         int x0 = r.x, y0 = r.y;
 
         int i, j = 0;
-        for (int y = y0; y <= y1; ++y, ++j) {
+        for (int y = y0; y < y1; ++y, ++j) {
             i = 0;
-            for (int x = x0; x <= x1; ++x, ++i) {
-                if (x == x1 || y == y1 || s.contains (x, y))
+            for (int x = x0; x < x1; ++x, ++i) {
+                if (s.contains (x, y))
                     dst.set (i, j, get (x, y));
             }
         }
@@ -1163,38 +1168,44 @@ public class Bitmap implements Serializable, TIFFTags {
             if (b.get (x + 1, y)) Nb.add (ChainCode.E);
             if (b.get (x, y + 1)) Nb.add (ChainCode.S);
             if (b.get (x + 1, y + 1)) Nb.add (ChainCode.SE);
-        } else if (x == 0) { // Nb in {2,1,0,7,6}
+        }
+        else if (x == 0) { // Nb in {2,1,0,7,6}
             if (b.get (x + 1, y)) Nb.add (ChainCode.E);
             if (b.get (x + 1, y - 1)) Nb.add (ChainCode.NE);
             if (b.get (x, y - 1)) Nb.add (ChainCode.N);
             if (b.get (x, y + 1)) Nb.add (ChainCode.S);
             if (b.get (x + 1, y + 1)) Nb.add (ChainCode.SE);
-        } else if (y == 0) { // Nb in {4,5,6,7,0}
+        }
+        else if (y == 0) { // Nb in {4,5,6,7,0}
             if (b.get (x - 1, y)) Nb.add (ChainCode.W);
             if (b.get (x - 1, y - 1)) Nb.add (ChainCode.SW);
             if (b.get (x, y + 1)) Nb.add (ChainCode.S);
             if (b.get (x + 1, y + 1)) Nb.add (ChainCode.SE);
             if (b.get (x + 1, y)) Nb.add (ChainCode.E);
-        } else if (x == b.width - 1 && y == b.height - 1) {
+        }
+        else if (x == b.width - 1 && y == b.height - 1) {
             // Nb in {2,3,4}
             if (b.get (x, y - 1)) Nb.add (ChainCode.N);
             if (b.get (x - 1, y - 1)) Nb.add (ChainCode.NW);
             if (b.get (x - 1, y)) Nb.add (ChainCode.W);
-        } else if (x == b.width - 1) {
+        }
+        else if (x == b.width - 1) {
             // Nb in {2,3,4,5,6}
             if (b.get (x, y - 1)) Nb.add (ChainCode.N);
             if (b.get (x - 1, y - 1)) Nb.add (ChainCode.NW);
             if (b.get (x - 1, y)) Nb.add (ChainCode.W);
             if (b.get (x - 1, y + 1)) Nb.add (ChainCode.SW);
             if (b.get (x, y + 1)) Nb.add (ChainCode.S);
-        } else if (y == b.height - 1) {
+        }
+        else if (y == b.height - 1) {
             // Nb in {0,1,2,3,4}
             if (b.get (x + 1, y)) Nb.add (ChainCode.E);
             if (b.get (x + 1, y - 1)) Nb.add (ChainCode.NE);
             if (b.get (x, y - 1)) Nb.add (ChainCode.N);
             if (b.get (x - 1, y - 1)) Nb.add (ChainCode.NW);
             if (b.get (x - 1, y)) Nb.add (ChainCode.W);
-        } else {
+        }
+        else {
             if (b.get (x + 1, y)) Nb.add (ChainCode.E);
             if (b.get (x + 1, y - 1)) Nb.add (ChainCode.NE);
             if (b.get (x, y - 1)) Nb.add (ChainCode.N);
@@ -1302,9 +1313,11 @@ public class Bitmap implements Serializable, TIFFTags {
 
             Point2D pt = null;
             if (Nb.isEmpty ()) {
-            } else if (Nb.size () == 1) { //
+            }
+            else if (Nb.size () == 1) { //
                 pt = seq.add (Nb.iterator ().next ());
-            } else {
+            }
+            else {
                 // multiple choice; pick best one based on the following
                 //  rule: select the one for which
                 ChainCode best = null;
@@ -1334,7 +1347,8 @@ public class Bitmap implements Serializable, TIFFTags {
                 // continue
                 x = (int) pt.getX ();
                 y = (int) pt.getY ();
-            } else {
+            }
+            else {
                 break; // we're done
             }
         }
@@ -1562,6 +1576,91 @@ public class Bitmap implements Serializable, TIFFTags {
 
         return segments;
     }
+
+    // p4 neighbor
+    public boolean isBoundary (int x, int y) {
+        return !(get (x-1, y) && get (x, y-1) && get (x+1, y) && get (x, y+1));
+    }
+
+    /*
+     * trace the boundary of the bitmap
+     */
+    public Bitmap trace () {
+        Bitmap tr = new Bitmap (width, height);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (isOn (x, y) && isBoundary (x, y)) {
+                    tr.set(x, y, true);
+                }
+            }
+        }
+        return tr;
+    }
+
+    /*
+     * return the bounding polygon of the given bitmap
+     */
+    public Shape getBoundingShape () {
+        return GeomUtil.toPolygon
+            (trace().dominantPoints().toArray(new Point2D[0]));
+    }
+
+    public Bitmap and (Shape s) {
+        Rectangle r = s.getBounds();
+        if (r.width > 0 && r.height > 0) {
+            Bitmap b = new Bitmap (r.width, r.height);
+            for (int y = 0; y < b.height; ++y) {
+                for (int x = 0; x < b.width; ++x) {
+                    if (s.contains(r.x+x, r.y+y))
+                        b.set(x, y, get (r.x+x, r.y+y));
+                }
+            }
+            return b;
+        }
+        return null;
+    }
+
+    public Shape[] split () {
+        return split (1);
+    }
+    
+    public Shape[] split (double threshold) {
+        Point2D[] pts = trace().dominantPoints().toArray(new Point2D[0]);
+        Point2D[] concave = GeomUtil.concavity(pts);
+        Shape[] split = null;
+        if (concave.length > 1) {
+            // for each pair of concave points, we make an attempt to cut
+            // the bitmap
+            long best = Integer.MAX_VALUE;
+            for (int i = 0; i < concave.length; ++i) {
+                for (int j = i+1; j < concave.length; ++j) {
+                    Line2D line = new Line2D.Double(concave[i], concave[j]);
+                    Bitmap b = new Bitmap (this);
+                    for (int y = 0; y < height; ++y) {
+                        for (int x = 0; x < width; ++x) {
+                            if (line.ptSegDist(new Point2D.Double(x, y))
+                                < threshold) {
+                                b.set(x, y, false);
+                            }
+                        }
+                    }
+
+                    List<Shape> ccs = b.polyConnectedComponents();
+                    if (ccs.size() == 2) {
+                        Bitmap b0 = b.crop(ccs.get(0));
+                        Bitmap b1 = b.crop(ccs.get(1));
+                        long delta = Math.abs(b0.area() - b1.area());
+                        if (split == null || delta < best) {
+                            split = ccs.toArray(new Shape[0]);
+                            best = delta;
+                        }
+                    }
+                }
+            }
+        }
+        
+        return split;
+    }
     
     public static void main (String[] argv) throws Exception {
         Bitmap bm = new Bitmap (16, 16);
@@ -1578,47 +1677,6 @@ public class Bitmap implements Serializable, TIFFTags {
             }
         }
 
-        /*
-          for (int x = 4; x < 6; ++x) {
-          //bm.set(x, 4, true);
-          bm.set(x, 5, true);
-          }
-
-          for (int y = 6; y < 10; ++y) {
-          for (int x = 2; x < 8; ++x) {
-          boolean on = rand.nextDouble() > .5;
-          if (on) {
-          //System.out.println("pixel on at "+x+" "+y);
-          ++n;
-          }
-          bm.set(x, y, true);
-          }
-          }
-
-          bm.dump(System.out);
-          System.out.println(n + " pixels on!");
-          ChainCodeSequence ccs = bm.chainCode();
-          System.out.println("chain code "+ccs.length());
-
-          Bitmap thin = bm.skeleton();
-          thin.dump(System.out);
-
-          List<Rectangle> bboxes = bm.connectedComponents();
-          System.out.println(bboxes.size()+ " connected components!");
-          for (Rectangle r : bboxes) {
-          System.out.println(r);
-          Bitmap c = bm.crop(r);
-          c.dump(System.out);
-          }
-          bm.write("png", new File ("bitmap.png"));
-
-          List<Point> corners = bm.corners(3);
-          System.out.println(corners.size()+ " corners!");
-          for (Point pt : corners) {
-          System.out.println(pt);
-          }
-        */
-
         if (argv.length == 0) {
             System.err.println ("Usage: Bitmap FILE.tif");
             System.exit (1);
@@ -1628,14 +1686,9 @@ public class Bitmap implements Serializable, TIFFTags {
         Bitmap ske = tif.thin();
         //tif.write("png", new File ("bitmap.png"));
         tif.dump (System.out);
-        /*
-          List<Shape> cc = tif.connectedComponents();
-          for (Shape s : cc) {
-          System.out.println("crop: "+s.getBounds());
-          Bitmap c = tif.crop(s);
-          c.dump(System.out);
-          }
-        */
+        tif.trace().dump(System.out);
+        tif.trace().trace().dump(System.out);
+        
         System.out.println ("Image " + tif.width () + "x" + tif.height ());
 
         char[][] ascii = new char[tif.height ()][tif.width ()];
@@ -1645,8 +1698,8 @@ public class Bitmap implements Serializable, TIFFTags {
             }
         }
 
-        List<ChainCodeSequence> seqs = tif.chainCodes ();
-        System.out.println ("Num chain codes: " + seqs.size ());
+        List<ChainCodeSequence> seqs = tif.trace().chainCodes();
+        System.out.println ("Num chain codes: " + seqs.size());
         for (ChainCodeSequence s : seqs) {
             int x = s.getStartX (), y = s.getStartY ();
             for (ChainCode c : s.getSequence ()) {
@@ -1654,7 +1707,7 @@ public class Bitmap implements Serializable, TIFFTags {
                 x += c.dx ();
                 y += c.dy ();
             }
-            ascii[y][x] = '#'; // mark the end of this chain code
+            ascii[y][x] = '/'; // mark the end of this chain code
         }
 
         for (int y = 0; y < tif.height (); ++y) {
@@ -1663,21 +1716,42 @@ public class Bitmap implements Serializable, TIFFTags {
             System.out.println ();
         }
 
-        List<Point2D> dps = tif.dominantPoints ();
+        List<Point2D> dps = tif.trace().dominantPoints();
         System.out.println ("** " + dps.size () + " dominant points");
         for (int i = 0; i < dps.size (); ++i) {
             Point2D pt = dps.get (i);
             System.out.println (" ++ " + (i + 1) + ": " + pt);
-            ascii[(int) pt.getY ()][(int) pt.getX ()] = '@';
+            ascii[(int) pt.getY ()][(int) pt.getX ()] = 'X';
         }
-
-
+        
+        System.out.println("--");
         for (int y = 0; y < tif.height (); ++y) {
             for (int x = 0; x < tif.width (); ++x)
                 System.out.print (ascii[y][x]);
             System.out.println ();
         }
         //tif.segments(10, 2);
+
+        Point2D[] pts = GeomUtil.concavity(dps.toArray(new Point2D[0]));
+        for (Point2D pt : pts) {
+            int x = (int)pt.getX(), y = (int)pt.getY();
+            ascii[y][x] = '#';
+        }
+        
+        System.out.println("--");
+        for (int y = 0; y < tif.height (); ++y) {
+            for (int x = 0; x < tif.width (); ++x)
+                System.out.print (ascii[y][x]);
+            System.out.println ();
+        }
+
+        Shape[] split = tif.split();
+        if (split != null) {
+            System.out.println("-- split 1");
+            tif.crop(split[0]).dump(System.out);
+            System.out.println("-- split 2");
+            tif.crop(split[1]).dump(System.out);            
+        }
     }
 
     public static class Skeleton {

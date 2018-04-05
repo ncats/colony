@@ -227,15 +227,51 @@
   </target>
 
   <target name="predict" depends="compile">
+    <echo message="=== NucleiAnalysis prediction "/>
+    <java classname="tripod.colony.NucleiAnalysis$Predict" maxmemory="256m"
+          classpathref="lib.classpath" fork="true">
+      <jvmarg value="-Dcandidate-size=10"/>          
+      <arg value="models"/>
+      <!--arg value="data-science-bowl-2018/train_images/f29fd9c52e04403cd2c7d43b6fe2479292e53b2f61969d25256d2d2aca7c6a81.png"/-->
+      <!--arg value="data-science-bowl-2018/test/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac/images/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac.png"/-->
+      <arg value="data-science-bowl-2018/test/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466/images/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466.png"/>
+    </java>
+  </target>
+
+  <target name="predict-all" depends="compile">
      <echo message="=== NucleiAnalysis prediction "/>
-     <java classname="tripod.colony.NucleiAnalysis$Predict" maxmemory="256m"
+     <java classname="tripod.colony.NucleiAnalysis$Predict" maxmemory="1024m"
            classpathref="lib.classpath" fork="true">
+      <jvmarg value="-Dcandidate-size=10"/>       
        <arg value="models"/>
-       <arg value="data-science-bowl-2018/train_images/f29fd9c52e04403cd2c7d43b6fe2479292e53b2f61969d25256d2d2aca7c6a81.png"/>
-       <arg value="data-science-bowl-2018/test/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac/images/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac.png"/>
+       <arg value="data-science-bowl-2018/test_images"/>
      </java>
   </target>
   
+  <target name="tmf" depends="compile">
+     <echo message="=== threshold mass function "/>
+     <java classname="tripod.colony.NucleiAnalysis$TMF" maxmemory="1024m"
+           classpathref="lib.classpath" fork="true">
+       <!--arg value="data-science-bowl-2018/test/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466/images/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466.png"/-->
+       <arg value="data-science-bowl-2018/test/17b9bf4356db24967c4677b8376ac38f826de73a88b93a8d73a8b452e399cdff/images/17b9bf4356db24967c4677b8376ac38f826de73a88b93a8d73a8b452e399cdff.png"/>
+       <!--arg value="data-science-bowl-2018/test/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac/images/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac.png"/-->
+       <!--arg value="data-science-bowl-2018/test/3c4c675825f7509877bc10497f498c9a2e3433bf922bd870914a2eb21a54fd26/images/3c4c675825f7509877bc10497f498c9a2e3433bf922bd870914a2eb21a54fd26.png"/-->
+     </java>
+  </target>
+
+  <target name="nuclei-seg" depends="compile">
+     <echo message="=== nuclei segmentatino "/>
+     <java classname="tripod.colony.NucleiSegmentation" maxmemory="2048m"
+           classpathref="lib.classpath" fork="true">
+       <arg value="data-science-bowl-2018/test/3c4c675825f7509877bc10497f498c9a2e3433bf922bd870914a2eb21a54fd26/images/3c4c675825f7509877bc10497f498c9a2e3433bf922bd870914a2eb21a54fd26.png"/>
+       <!--
+       <arg value="data-science-bowl-2018/test/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac/images/0999dab07b11bc85fb8464fc36c947fbd8b5d6ec49817361cb780659ca805eac.png"/>
+       <arg value="data-science-bowl-2018/test/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466/images/0f1f896d9ae5a04752d3239c690402c022db4d72c0d2c087d73380896f72c466.png"/>
+       <arg value="data-science-bowl-2018/test/17b9bf4356db24967c4677b8376ac38f826de73a88b93a8d73a8b452e399cdff/images/17b9bf4356db24967c4677b8376ac38f826de73a88b93a8d73a8b452e399cdff.png"/>
+       <arg value="data-science-bowl-2018/test/259b35151d4a7a5ffdd7ab7f171b142db8cfe40beeee67277fac6adca4d042c4/images/259b35151d4a7a5ffdd7ab7f171b142db8cfe40beeee67277fac6adca4d042c4.png"/>
+       -->
+     </java>
+  </target>
   
   <target name="zpanel" depends="compile">
      <echo message="=== Spheroid test "/>

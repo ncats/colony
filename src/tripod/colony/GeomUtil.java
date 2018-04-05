@@ -4,8 +4,10 @@ import java.util.*;
 import java.awt.Shape;
 import java.awt.Polygon;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.geom.*;
-
+import static java.awt.geom.PathIterator.*;
+import java.io.*;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -42,20 +44,27 @@ public class GeomUtil {
         double dx = x1 - x0, dy = y1 - y0;
         if (dx > 0 && dy > 0) {
             return Math.atan (dy / dx);
-        } else if (dx > 0 && dy == 0) {
+        }
+        else if (dx > 0 && dy == 0) {
             return 0.;
-        } else if (dx < 0 && dy > 0) {
-            return Math.PI - Math.atan (-1. * dy / dx);
-        } else if (dx < 0 && dy == 0) {
+        }
+        else if (dx < 0 && dy > 0) {
+            return Math.PI - Math.atan(-1. * dy / dx);
+        }
+        else if (dx < 0 && dy == 0) {
             return Math.PI;
-        } else if (dx == 0 && dy > 0) {
+        }
+        else if (dx == 0 && dy > 0) {
             return Math.PI / 2;
-        } else if (dx == 0 && dy < 0) {
+        }
+        else if (dx == 0 && dy < 0) {
             return 3 * Math.PI / 2;
-        } else if (dx < 0 && dy < 0) {
-            return 3 * Math.PI / 2 - Math.atan (dy / dx);
-        } else if (dx > 0 && dy < 0) {
-            return 2 * Math.PI - Math.atan (-1. * dy / dx);
+        }
+        else if (dx < 0 && dy < 0) {
+            return 3 * Math.PI / 2 - Math.atan(dy / dx);
+        }
+        else if (dx > 0 && dy < 0) {
+            return 2 * Math.PI - Math.atan(-1. * dy / dx);
         }
         return 0.;
     }
@@ -65,43 +74,42 @@ public class GeomUtil {
      * Graham scan algorithm for convex hull
      */
     public static Polygon convexHull (Point2D... pts) {
+        return convexHull (null, pts);
+    }
+
+    public static Polygon convexHull (List<Point2D> concave, Point2D... pts) {
         if (pts.length < 3) {
             Polygon poly = new Polygon ();
             for (Point2D pt : pts) {
-                poly.addPoint ((int) (pt.getX () + .5), (int) (pt.getY () + .5));
+                poly.addPoint ((int) (pt.getX() + .5), (int) (pt.getY() + .5));
             }
             return poly;
         }
 
         Point2D anchor = null;
         for (Point2D pt : pts) {
-            if (anchor == null || pt.getY () < anchor.getY ()) {
+            if (anchor == null || pt.getY() < anchor.getY()) {
                 anchor = pt;
             } 
-            else if (pt.getY () == anchor.getY ()
-                     && pt.getX () < anchor.getX ()) {
+            else if (pt.getY() == anchor.getY()
+                     && pt.getX() < anchor.getX()) {
                 anchor = pt;
             }
         }
 
         final Point2D p0 = anchor;
-        Arrays.sort (pts, new Comparator<Point2D> () {
-                         public int compare (Point2D a, Point2D b) {
-                             double a0 = angle (p0, a), a1 = angle (p0, b);
-                             /*
-                               System.err.println("p0=("+p0.x+","+p0.y+") a=("+a.x+","+a.y+") "
-                               +"b=("+b.x+","+b.y+") ccw="+ccw(p0,a,b)
-                               +" theta(p0,a)="+a0+" theta(p0,b)="+a1);
-                             */
-                             if (a0 < a1) return -1;
-                             if (a0 > a1) return 1;
-
-                             double d0 = a.distance (p0), d1 = b.distance (p0);
-                             if (d0 < d1) return -1;
-                             if (d0 > d1) return 1;
-                             return 0;
-                         }
-                     });
+        Arrays.sort(pts, new Comparator<Point2D> () {
+                public int compare (Point2D a, Point2D b) {
+                    double a0 = angle (p0, a), a1 = angle (p0, b);
+                    if (a0 < a1) return -1;
+                    if (a0 > a1) return 1;
+                    
+                    double d0 = a.distance(p0), d1 = b.distance(p0);
+                    if (d0 < d1) return -1;
+                    if (d0 > d1) return 1;
+                    return 0;
+                }
+            });
 
         if (DEBUG) {
             logger.info ("Starting point: " + p0);
@@ -111,59 +119,64 @@ public class GeomUtil {
             }
         }
 
-        LinkedList<Point2D> stack = new LinkedList<Point2D> ();
-        stack.push (pts[0]);
-        stack.push (pts[1]);
-        stack.push (pts[2]);
+        LinkedList<Point2D> stack = new LinkedList<> ();
+        stack.push(pts[0]);
+        stack.push(pts[1]);
+        stack.push(pts[2]);
         for (int i = 3; i < pts.length; ++i) {
             Point2D pi = pts[i];
             while (true) {
-                Point2D p2 = stack.pop ();
+                Point2D p2 = stack.pop();
                 if (!stack.isEmpty()) {
-                    Point2D p1 = stack.peek ();
+                    Point2D p1 = stack.peek();
                     double dir = ccw (p1, p2, pi);
                     if (DEBUG) {
                         System.err.println
-                            ("p1=(" + p1.getX () + "," + p1.getY () + ") p2=("
-                             + p2.getX () + "," + p2.getY () + ") p"
-                             + i + "=(" + pi.getX () + "," + pi.getY ()
+                            ("p1=(" + p1.getX() + "," + p1.getY() + ") p2=("
+                             + p2.getX() + "," + p2.getY() + ") p"
+                             + i + "=(" + pi.getX() + "," + pi.getY()
                              + ") ccw=" + dir);
                     }
+                    
                     if (dir >= 0.) { // push back
-                        stack.push (p2);
+                        stack.push(p2);
                         break;
                     }
+                    
                     if (DEBUG) {
                         logger.info ("removing " + p2);
                     }
+                    
+                    if (concave != null)
+                        concave.add(p2);
                 }
                 else
                     break;
             }
 
-            stack.push (pi);
+            stack.push(pi);
         }
 
         if (DEBUG) {
-            logger.info ("Convex hull: " + stack.size ());
+            logger.info ("Convex hull: " + stack.size());
         }
 
         Polygon hull = new Polygon ();
-        for (ListIterator<Point2D> it = stack.listIterator (stack.size ());
-             it.hasPrevious (); ) {
-            Point2D pt = it.previous ();
+        for (ListIterator<Point2D> it = stack.listIterator (stack.size());
+             it.hasPrevious(); ) {
+            Point2D pt = it.previous();
             // should prune collinear points
             if (DEBUG) {
                 System.err.println (" " + pt);
             }
-            hull.addPoint ((int) (pt.getX () + .5), (int) (pt.getY () + .5));
+            hull.addPoint ((int)(pt.getX() + .5), (int)(pt.getY() + .5));
         }
 
         return hull;
     }
 
     public static boolean isNeighbor (Point p1, Point p2) {
-        return (Math.abs (p1.x - p2.x) <= 1 && Math.abs (p1.y - p2.y) <= 1);
+        return (Math.abs(p1.x - p2.x) <= 1 && Math.abs(p1.y - p2.y) <= 1);
     }
 
     public static Polygon toPolygon (Shape shape) {
@@ -172,6 +185,13 @@ public class GeomUtil {
         }
 
         return convexHull (vertices (shape));
+    }
+
+    public static Polygon toPolygon (Point2D... pts) {
+        Polygon pgon = new Polygon ();
+        for (Point2D pt : pts)
+            pgon.addPoint((int)(pt.getX()+0.5), (int)(pt.getY()+0.5));
+        return pgon;
     }
 
     // create a new convex hull shape from two given shapes
@@ -263,17 +283,6 @@ public class GeomUtil {
             * (p3.getX () * p4.getY () - p3.getY () * p4.getX ());
 
         return new Point2D.Double (x / c, y / c);
-
-        /*
-          double[] p1 = calcLineParams (l1);
-          double[] p2 = calcLineParams (l2);
-          if (p1[0] != p2[0]) {
-          double x = (p2[1] - p1[1])/(p1[0] - p2[0]);
-          double y = p1[0]*x + p1[1];
-          return new Point2D.Double(x, y);
-          }
-          return null;
-        */
     }
 
     // calculate line parameters (slope & intercept) of a line
@@ -367,5 +376,47 @@ public class GeomUtil {
         double y1 = s1.getBounds2D().getCenterY();
         double xx = x1 - x0, yy = y1 - y0;
         return Math.sqrt(xx*xx + yy*yy);
+    }
+
+    /*
+     * return a subset of points that are concave (if any)
+     */
+    public static Point2D[] concavity (Point2D... pts) {
+        List<Point2D> concave = new ArrayList<>();
+        // identify all concave points (if any)
+        convexHull (concave, pts);
+        return concave.toArray(new Point2D[0]);
+    }
+
+    /*
+     * decompose a given shape into its individual constituent shapes based
+     * on the path iterator
+     */
+    public static Shape[] decompose (Shape shape) {
+        PathIterator piter = shape.getPathIterator(null);
+        List<Shape> shapes = new ArrayList<>();
+        Polygon pgon = null;
+        for (double[] coords = new double[6]; !piter.isDone(); ) {
+            int type = piter.currentSegment(coords);
+            switch (type) {
+            case SEG_MOVETO:
+                shapes.add(pgon = new Polygon ());
+                pgon.addPoint((int)(coords[0]+0.5), (int)(coords[1]+0.5));
+                break;
+                
+            case SEG_CLOSE:
+                break;
+                
+            case SEG_LINETO:
+                pgon.addPoint((int)(coords[0]+0.5), (int)(coords[1]+0.5));
+                break;
+                
+            default:
+                logger.warning("Unsupport segment type: "+type);
+            }
+            piter.next();
+        }
+        
+        return shapes.toArray(new Shape[0]);
     }
 }
