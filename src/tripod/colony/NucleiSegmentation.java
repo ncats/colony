@@ -18,7 +18,7 @@ import org.apache.commons.math3.stat.regression.SimpleRegression;
 import org.apache.commons.math3.stat.regression.RegressionResults;
 
 
-public class NucleiSegmentation {
+public class NucleiSegmentation extends DefaultTreeModel {
     private static final Logger logger = Logger.getLogger
         (NucleiSegmentation.class.getName());
 
@@ -27,6 +27,8 @@ public class NucleiSegmentation {
      */
     static final int MINAREA = 1;
     static final int MINPATH = 5;
+    static final double MAXERR = 30.0;
+    static final double AMS = 1.5; // absoluyte min score
 
     public static class Region implements Shape, Comparable<Region> {
         public final double meanp; // pixel mean
@@ -69,13 +71,13 @@ public class NucleiSegmentation {
         public int compareTo (Region r) {
             Rectangle r1 = getBounds ();
             Rectangle r2 = r.getBounds();
-            int d = 0;
-            if (d == 0)
-                d = r1.x - r2.x;
+            int d = r1.x - r2.x;
             if (d == 0)
                 d = r1.y - r2.y;
             if (d == 0)
-                d = r1.width*r1.height - r2.width*r2.height;
+                d = r1.width - r2.width;
+            if (d == 0)
+                d = r1.height - r2.height;
             return d;
         }
 
@@ -205,6 +207,13 @@ public class NucleiSegmentation {
             bitmap = layer != null ? layer.bitmap.crop(region) : null;
         }
 
+        Segment (Segment copy) {
+            this.layer = copy.layer;
+            this.region = copy.region;
+            this.depth = copy.depth;
+            this.bitmap = copy.bitmap;
+        }
+
         public int threshold () {
             return layer != null ? layer.threshold : -1;
         }
@@ -246,6 +255,10 @@ public class NucleiSegmentation {
             return region.contains(seg.region);
         }
 
+        public boolean contains (double x, double y) {
+            return region.getBounds().contains(x, y);
+        }
+
         public List<Segment> getTerminalSegments () {
             return NucleiSegmentation.getTerminalSegments(this);
         }
@@ -274,6 +287,14 @@ public class NucleiSegmentation {
         public TreeNode getParent () { return parent; }
         public boolean isLeaf () { return children.isEmpty(); }
         public boolean isRoot () { return parent == null; }
+
+        public Segment[] getRootPath () {
+            Segment[] path = new Segment[depth];
+            int k = 0;
+            for (Segment p = this; p.parent != null; p = p.parent)
+                path[k++] = p;
+            return path;
+        }
         
         /*
          * get the path to the next branch in the hierarchy. a branch is a
@@ -326,125 +347,163 @@ public class NucleiSegmentation {
                 +",h="+r.height+"] a:"+region.area
                 +" m:"+String.format("%1$.3f", region.meanp)
                 +" v:"+String.format("%1$.3f", region.varp)
-                +" snr:"+String.format("%1$.3f", region.snr);
+                +" snr:"+String.format("%1$.3f", region.snr)
+                +(parent!= null ? (" ar:"+String.format
+                                   ("%1$.3f", (double)region.area
+                                    /parent.region.area)):"");
         }
     }
 
-    public static class SegmentationModel extends DefaultTreeModel {
-        public final Raster raster;
-        public final int pmin, pmax;
-
-        SegmentationModel (Raster raster, int pmin, int pmax) {
-            this (raster, pmin, pmax, MINPATH);
-        }
+    static class SegmentFit {
+        Segment start, stop;
+        Double slope;
+        Double err;
+        int len;
+        SegmentFit () {}
+        SegmentFit (Segment seg) { start = seg; }
         
-        SegmentationModel (Raster raster, int pmin, int pmax, int minpath) {
-            super (new Segment (null, new Region (raster, new Rectangle
-                                                  (0, 0, raster.getWidth(),
-                                                   raster.getHeight()))));
-
-            if (pmin < 0 || pmax > 255) {
-                throw new IllegalArgumentException
-                    ("Bogus pmin ("+pmin+") or pmax ("+pmax+")");
-            }
-            this.raster = raster;
-            this.pmin = pmin;
-            this.pmax = pmax;
-
-            Segment[] segments;
-            { List<Segment> segs = new ArrayList<>();
-                for (int t = pmin; t <= pmax; ++t) {
-                    Layer layer = new Layer (raster, t);                
-                    logger.info("...processing layer "+t+"/"
-                                +pmax+".. "+layer.regions.length);
-
-                    for (Region r : layer.regions) {
-                        if (r.area > MINAREA)
-                            segs.add(new Segment (layer, r));
-                    }
-                }
-                Collections.sort(segs);
-                
-                // now prune identical segments regardless of layers
-                List<Segment> remove = new ArrayList<>();
-                Segment p = null;
-                for (Segment s : segs) {
-                    if (p != null) {
-                        if (p.region.equals(s.region))
-                            remove.add(p);
-                    }
-                    p = s;
-                }
-                
-                for (Segment s : remove)
-                    segs.remove(s);
-                
-                segs.add(getRoot ());
-                segments = segs.toArray(new Segment[0]);
-            }
-
-            logger.info("... constructing segment hierarchy");
-            for (int i = 0; i < segments.length; ++i) {
-                for (int j = i+1; j < segments.length; ++j) {
-                    if (segments[j].contains(segments[i])) {
-                        segments[j].add(segments[i]);
-                        break;
-                    }
-                }
-            }
-
-            logger.info("... prunning segments");
-            for (List<Segment> pruned;
-                 !(pruned = pruneSegments (getRoot (), minpath)).isEmpty(); ) {
-                logger.info("..... "+pruned.size()+" segment(s) pruned!");
-            }
-        }
-
-        @Override
-        public Segment getRoot () { return (Segment) super.getRoot(); }
-
-        public void debug (String file) {
-            try {
-                PrintStream ps = new PrintStream
-                    (new FileOutputStream (file));
-                ps.println("#### "+root.getChildCount()+" segments!");
-                for (Segment s : ((Segment)getRoot()).children)
-                    s.print(ps);
-                ps.close();
-            }
-            catch (IOException ex) {
-                ex.printStackTrace();
-            }
-        }
-
-        public List<Segment> getTerminalSegments () {
-            return NucleiSegmentation.getTerminalSegments((Segment)getRoot());
+        public Double score () {
+            return slope != null ? len / slope : null;
         }
     }
 
-    final public Channel channel;
-    final public Raster raster;
-    final public SegmentationModel model;
+    public Channel channel;
+    public Raster raster;
+    public final double maxerr; // maximum error to break each segment
+    public final int minpath; // required minimum path length 
+    public final double ams; // absolute min score
 
-    public NucleiSegmentation (Raster raster) {
-        this (raster, MINPATH);
+    public NucleiSegmentation () {
+        this (MAXERR, MINPATH, AMS);
     }
     
-    public NucleiSegmentation (Raster raster, int minpath) {
-        this (new Grayscale (raster).getChannel(), minpath);
+    public NucleiSegmentation (double maxerr, int minpath, double ams) {
+        super (null);
+        this.maxerr = maxerr;
+        this.minpath = minpath;
+        this.ams = ams;
     }
 
-    public NucleiSegmentation (Channel channel) {
-        this (channel, MINPATH);
+    public void segment (Raster raster) {
+        segment (new Grayscale (raster).getChannel());
     }
     
-    public NucleiSegmentation (Channel channel, int minpath) {
-        this.channel = channel;        
-        raster = channel.raster();
-        model = new SegmentationModel (raster, channel.pmin+1,
-                                       channel.pmax-1, minpath);
+    public void segment (Channel channel) {
+        this.channel = channel;
+        this.raster = channel.raster();
+
+        setRoot (new Segment
+                 (null, new Region (raster,
+                                    new Rectangle (0, 0, channel.width,
+                                                   channel.height))));
+        
+        int pmin = channel.pmin+1, pmax = channel.pmax-1;
+        Segment[] segments;
+        { List<Segment> segs = new ArrayList<>();
+            for (int t = pmin; t <= pmax; ++t) {
+                Layer layer = new Layer (raster, t);                
+                logger.info("...processing layer "+t+"/"
+                            +pmax+".. "+layer.regions.length);
+
+                for (Region r : layer.regions) {
+                    if (r.area > MINAREA)
+                        segs.add(new Segment (layer, r));
+                }
+            }
+            Collections.sort(segs);
+                
+            // now prune identical segments regardless of layers
+            List<Segment> remove = new ArrayList<>();
+            Segment p = null;
+            for (Segment s : segs) {
+                if (p != null) {
+                    if (p.region.equals(s.region))
+                        remove.add(p);
+                }
+                p = s;
+            }
+                
+            for (Segment s : remove)
+                segs.remove(s);
+                
+            segs.add(getRoot ());
+            segments = segs.toArray(new Segment[0]);
+        }
+
+        logger.info("... constructing segment hierarchy");
+        for (int i = 0; i < segments.length; ++i) {
+            for (int j = i+1; j < segments.length; ++j) {
+                if (segments[j].contains(segments[i])) {
+                    segments[j].add(segments[i]);
+                    break;
+                }
+            }
+        }
+
+        logger.info("... pruning segments");
+        for (List<Segment> pruned;
+             !(pruned = pruneSegments (getRoot (), minpath)).isEmpty(); ) {
+            logger.info("..... "+pruned.size()+" segment(s) pruned!");
+        }
+
+        analyzeSegments ();
+
+        fireTreeStructureChanged (this, null, null, null);
     }
 
+    public NucleiSegmentation filter (double x, double y) {
+        NucleiSegmentation nuseg = new NucleiSegmentation ();
+        nuseg.channel = channel;
+        nuseg.raster = raster;
+        
+        List<Segment> matched = new ArrayList<>();
+        filter (matched, getRoot (), x, y);
+        nuseg.setRoot(matched.get(0));
+        
+        Collections.sort(matched);
+        for (int i = 0; i < matched.size(); ++i) {
+            Segment si = matched.get(i);
+            for (int j = i+1; j < matched.size(); ++j) {
+                Segment sj = matched.get(j);
+                if (sj.contains(si)) {
+                    sj.add(si);
+                    break;
+                }
+            }
+        }
+
+        return nuseg;
+    }
+
+    static void filter (List<Segment> matched,
+                        Segment seg, double x, double y) {
+        if (seg.contains(x, y))
+            matched.add(new Segment (seg));
+        for (Segment s : seg.children)
+            filter (matched, s, x, y);
+    }
+
+    @Override
+    public Segment getRoot () { return (Segment)super.getRoot(); }
+
+    public void debug (String file) {
+        try {
+            PrintStream ps = new PrintStream
+                (new FileOutputStream (file));
+            ps.println("#### "+getRoot().getChildCount()+" segments!");
+            for (Segment s : ((Segment)getRoot()).children)
+                s.print(ps);
+            ps.close();
+        }
+        catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }
+
+    public List<Segment> getTerminalSegments () {
+        return getTerminalSegments (getRoot());
+    }
+    
     public static List<Segment> getTerminalSegments (Segment seg) {
         List<Segment> leafs = new ArrayList<>();
         getTerminalSegments (leafs, seg);
@@ -461,32 +520,20 @@ public class NucleiSegmentation {
         }
     }
 
-    public void segment () {
-        List<Segment> leafs = model.getTerminalSegments();
-        
-    }
-
-    public void linearFit (Segment seg) throws Exception {
-        if (!seg.isLeaf())
-            throw new IllegalArgumentException ("Segment is not a leaf node!");
-
-        int k = 0;
-        Segment[] path = new Segment[seg.depth];
-        for (Segment p = seg; p.parent != null; p = p.parent) {
-            path[k++] = p;
-        }
-
+    public static void debugSegment (Segment seg, double maxerr)
+        throws IOException {
         String name = "seg."+seg.depth+"."+seg.threshold();
         FileOutputStream fos = new FileOutputStream (name+".txt");
         PrintStream ps = new PrintStream (fos);
-        k = 0;
+        
+        Segment[] path = seg.getRootPath();
         double m = 0.;
-        SimpleRegression r = new SimpleRegression ();
-        for (int i = 0; i < path.length; ++i) {
+        SimpleRegression r = new SimpleRegression ();        
+        for (int i = 0, k = 0; i < path.length; ++i) {
             Segment p = path[i];
             m += (p.area() - m)/(i+1);
-            ps.print(p.threshold()+" "+p.area()+" "
-                     +String.format("%1$.1f", m)
+            //double x = i == 0 ? 0. : (p.region.varp - path[i-1].region.varp);
+            ps.print(p.threshold()+" "+p.area()+" "+String.format("%1$.1f", m)
                      +" m:"+String.format("%1$.1f", p.region.meanp)
                      +" v:"+String.format("%1$.1f", p.region.varp)
                      +" snr:"+String.format("%1$.1f", p.region.snr));
@@ -507,7 +554,7 @@ public class NucleiSegmentation {
                          +" sse: "+r.getSumSquaredErrors()
                          +" r^2: "+r.getR()
                          +" N:"+r.getN());
-                if (err > 10) {
+                if (err > maxerr) {
                     k = i;
                     ps.print(" break!");
                 }
@@ -516,19 +563,103 @@ public class NucleiSegmentation {
         }
         ps.close();
     }
+    
+    static SegmentFit extendSegment (Segment seg, double maxerr, int minlen) {
+        if (minlen < 2)
+            throw new IllegalArgumentException ("minlen must be >= 2");
+        
+        Segment[] path = seg.getRootPath();
+        SegmentFit fit = null;
+        if (path.length >= minlen) {
+            fit = new SegmentFit (seg);
+            SimpleRegression r = new SimpleRegression ();
+            
+            for (int i = minlen-1; i < path.length; ++i) {
+                r.clear();
+                for (int j = 0; j <= i; ++j)
+                    r.addData(path[j].threshold(), path[j].area());
+                fit.stop = path[i-1]; // don't include the current segment
+                double y = r.predict(path[i].threshold());
+                double err = Math.abs(y - path[i].area());
+                fit.slope = r.getSlope();
+                fit.err = err;
+                if (err > maxerr) {
+                    fit.len = i;
+                    break;
+                }
+            }
+        }
+        
+        return fit;
+    }
 
     static List<Segment> pruneSegments (Segment segment, int minpath) {
         List<Segment> pruned = new ArrayList<>();
         List<Segment> leafs = getTerminalSegments (segment);
+        
         for (Segment leaf : leafs) {
             Segment[] path = leaf.getBranchAncestorPath();
             if (path.length <= minpath) {
-                // prune this leaf..
-                leaf.remove();
+                leaf.remove(); // prune this leaf..
                 pruned.add(leaf);
             }
         }
         return pruned;
+    }
+
+    void analyzeSegments () {
+        logger.info("... candidate segments");
+
+        List<Segment> leafs = getTerminalSegments (getRoot ());
+        Collections.sort(leafs, (a, b) -> {
+                Segment[] pa = a.getRootPath();
+                Segment[] pb = b.getRootPath();
+                int d = pb.length - pa.length;
+                if (d == 0) {
+                    pa = a.getBranchAncestorPath();
+                    pb = b.getBranchAncestorPath();
+                    d = pb.length - pa.length;
+                }
+                if (d == 0)
+                    d = b.area() - a.area();
+                if (d == 0)
+                    d = a.getX() - b.getX();
+                if (d == 0)
+                    d = a.getY() - b.getY();
+                return d;
+            });
+
+        // do first pass to determine directionality
+        int npos = 0, nneg = 0;
+        List<SegmentFit> segments = new ArrayList<>();
+        for (Segment seg : leafs) {            
+            SegmentFit fit = extendSegment (seg, maxerr, minpath);
+            if (fit != null) {
+                if (fit.slope > 0.) ++npos;
+                else if (fit.slope < 0.) ++nneg;
+                segments.add(fit);
+            }
+        }
+        
+        logger.info("... segments = "+segments.size()
+                    +" npos="+npos+" nneg="+nneg);
+        int k = 0;
+        for (SegmentFit fit : segments) {
+            if ((fit.slope > 0 && npos > nneg)
+                || (fit.slope < 0 && npos < nneg)) {
+                logger.info(String.format("%1$5d: ", ++k)+" "+fit.start);
+                Segment seg = fit.start;
+                for (SegmentFit sf;
+                     (sf = extendSegment
+                      (seg, maxerr, minpath)) != null; ) {
+                    logger.info("       ["+seg.threshold()+","
+                                +sf.stop.threshold()+"]: slope="+sf.slope
+                                +" len/slope="+sf.score()
+                                +(Math.abs(sf.score()) > AMS ? " **":""));
+                    seg = sf.stop.parent;
+                }
+            }
+        }
     }
     
     public static void main (String[] argv) throws Exception {
@@ -537,11 +668,12 @@ public class NucleiSegmentation {
                                +" IMAGES...");
             System.exit(1);
         }
-
+        
+        NucleiSegmentation ns = new NucleiSegmentation ();
         for (int i = 0; i < argv.length; ++i) {
             System.out.println("------ " +argv[i]+" ------");
             RenderedImage image = ImageIO.read(new File (argv[i]));
-            NucleiSegmentation ns = new NucleiSegmentation (image.getData());
+            ns.segment(image.getData());
         }
     }
 }

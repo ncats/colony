@@ -36,8 +36,9 @@
 
     <javac srcdir="${src}" 
            destdir="${build}"
-	   deprecation="on"
+	       deprecation="on"
            debug="on"
+           includeantruntime="false"
            fork="yes">
       <classpath refid="compile.classpath"/>
     </javac>

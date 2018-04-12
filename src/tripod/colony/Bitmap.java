@@ -450,6 +450,15 @@ public class Bitmap implements Serializable, TIFFTags {
             (DataBuffer.TYPE_BYTE, width, height, 1, scanline, 0);
     }
 
+    public Bitmap (Shape shape) {
+        this (shape.getBounds().width, shape.getBounds().height);
+        Rectangle r = shape.getBounds();
+        for (int y = 0; y < height; ++y)
+            for (int x = 0; x < width; ++x)
+                if (shape.contains(r.x+x, r.y+y))
+                    set (x, y, true);
+    }
+
     public Object clone () {
         return new Bitmap (this);
     }
@@ -1624,22 +1633,40 @@ public class Bitmap implements Serializable, TIFFTags {
         return split (1);
     }
     
-    public Shape[] split (double threshold) {
-        Point2D[] pts = trace().dominantPoints().toArray(new Point2D[0]);
-        Point2D[] concave = GeomUtil.concavity(pts);
+    public Shape[] split (double slack) {
+        Point2D[] pts = trace().dominantPoints().toArray(new Point2D[0]); 
+
+        // identify all concave points (if any)
+        List<Point2D> concave = new ArrayList<>();
+        GeomUtil.convexHull(concave, pts);
+        
         Shape[] split = null;
-        if (concave.length > 1) {
+        if (!concave.isEmpty()) {
+            if (concave.size() == 1) {
+                // now add dominant points that are on the edge
+                for (Point2D pt : pts) {
+                    if (concave.indexOf(pt) < 0) {
+                        int x = (int)(pt.getX()+0.5), y = (int)(pt.getY()+0.5);
+                        if (x == 0 || y == 0 || x == width-1 || y == height-1)
+                            concave.add(pt);
+                    }
+                }
+            }
+            
             // for each pair of concave points, we make an attempt to cut
             // the bitmap
             long best = Integer.MAX_VALUE;
-            for (int i = 0; i < concave.length; ++i) {
-                for (int j = i+1; j < concave.length; ++j) {
-                    Line2D line = new Line2D.Double(concave[i], concave[j]);
+            for (int i = 0; i < concave.size(); ++i) {
+                for (int j = i+1; j < concave.size(); ++j) {
+                    Line2D line = new Line2D.Double(concave.get(i),
+                                                    concave.get(j));
                     Bitmap b = new Bitmap (this);
                     for (int y = 0; y < height; ++y) {
                         for (int x = 0; x < width; ++x) {
-                            if (line.ptSegDist(new Point2D.Double(x, y))
-                                < threshold) {
+                            Point2D p = new Point2D.Double(x, y);
+                            if (line.ptSegDist(p) < slack) {
+                                // remove the pixel to create a disconnected
+                                // component
                                 b.set(x, y, false);
                             }
                         }
@@ -1663,20 +1690,6 @@ public class Bitmap implements Serializable, TIFFTags {
     }
     
     public static void main (String[] argv) throws Exception {
-        Bitmap bm = new Bitmap (16, 16);
-        java.util.Random rand = new java.util.Random ();
-        int n = 0;
-        for (int y = 0; y < bm.height (); ++y) {
-            for (int x = 0; x < bm.width (); ++x) {
-                boolean on = rand.nextDouble () > .5;
-                if (on) {
-                    //System.out.println("pixel on at "+x+" "+y);
-                    ++n;
-                }
-                bm.set (x, y, on);
-            }
-        }
-
         if (argv.length == 0) {
             System.err.println ("Usage: Bitmap FILE.tif");
             System.exit (1);

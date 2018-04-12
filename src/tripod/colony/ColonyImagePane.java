@@ -280,11 +280,7 @@ public class ColonyImagePane extends JPanel
         //drawPolygons (g2);
         if (segment != null) {
             g2.setPaint(Color.red);
-            //drawSegment (g2, segment);
-            tx = AffineTransform.getTranslateInstance
-                (segment.getX(), segment.getY());
-            g2.transform(tx);
-            g2.fill(GeomUtil.toPolygon(segment.dominantPoints()));
+            drawSegment (g2, segment);
         }
 
         // second row
